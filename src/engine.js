@@ -238,6 +238,12 @@ export function readiness(data) {
   else if (daysSinceLift === 2) { score += 8; factors.push({ good: true, text: "2 rest days — fully recovered, attack today." }); }
   else if (daysSinceLift >= 4) { score += 8; factors.push({ good: false, text: `${daysSinceLift} days since last lift. Muscle protein synthesis window closed — get back in.` }); }
 
+  const lastSess = history[history.length - 1];
+  if (lastSess?.feel && daysSinceLift <= 1) {
+    if (lastSess.feel === "brutal") { score -= 10; factors.push({ good: false, text: "Last session rated Brutal — bank extra recovery." }); }
+    else if (lastSess.feel === "easy") { score += 4; factors.push({ good: true, text: "Last session felt Easy — capacity to push harder." }); }
+  }
+
   if (ratio != null) {
     if (ratio > 1.5) { score -= 25; factors.push({ good: false, text: `Workload spike (ACWR ${ratio.toFixed(2)}). Go lighter or rest — injury risk zone.` }); }
     else if (ratio > 1.3) { score -= 10; factors.push({ good: false, text: `Load ramping fast (ACWR ${ratio.toFixed(2)}). Watch recovery.` }); }
@@ -397,4 +403,68 @@ export function bodyweightTrend(bodyWeight) {
     }
   }
   return { latest, series, ratePerWeek, etaWeeks, target: BODYWEIGHT_TARGET };
+}
+
+// ---------------- ACHIEVEMENTS ----------------
+
+export function achievements(data) {
+  const h = data.history || [];
+  const totalSessions = h.length;
+  const prTotal = h.reduce((s, x) => s + (x.prs?.length || 0), 0);
+  const bestOf = (id) => {
+    let b = 0;
+    for (const s of h) {
+      const e = s.exercises?.[id]; if (!e) continue;
+      for (const st of e.sets || []) { const w = parseFloat(st.weight) || 0; if (st.reps && w > b) b = w; }
+    }
+    return b;
+  };
+  const bench = bestOf("barbell_bench_press"), squat = bestOf("barbell_back_squat"), dl = bestOf("trap_bar_deadlift");
+  let pullupReps = 0;
+  for (const s of h) { const e = s.exercises?.pullups; if (!e) continue; for (const st of e.sets || []) pullupReps += parseInt(st.reps) || 0; }
+
+  const weekKey = (dstr) => { const d = new Date(dstr); const day = (d.getDay() + 6) % 7; const mon = new Date(d); mon.setDate(d.getDate() - day); return mon.toISOString().split("T")[0]; };
+  const volByWeek = {}, countByWeek = {};
+  for (const s of h) {
+    const k = weekKey(s.date);
+    volByWeek[k] = (volByWeek[k] || 0) + sessionVolume(s);
+    countByWeek[k] = (countByWeek[k] || 0) + 1;
+  }
+  const bestWeek = Object.values(volByWeek).length ? Math.max(...Object.values(volByWeek)) : 0;
+
+  let consecWeeks = 0, run = 0;
+  for (let w = 25; w >= 0; w--) {
+    const mon = new Date(); const day = (mon.getDay() + 6) % 7;
+    mon.setDate(mon.getDate() - day - w * 7); mon.setHours(0, 0, 0, 0);
+    const k = mon.toISOString().split("T")[0];
+    if ((countByWeek[k] || 0) >= 3) { run++; consecWeeks = Math.max(consecWeeks, run); } else run = 0;
+  }
+
+  const cardioCount = (data.cardio || []).length;
+  const A = (id, icon, name, desc, cur, target) => ({ id, icon, name, desc, earned: cur >= target, cur: Math.min(Math.round(cur), target), target });
+  return [
+    A("first", "⚡", "First Blood", "Complete your first workout", totalSessions, 1),
+    A("ten", "🔟", "Double Digits", "Log 10 workouts", totalSessions, 10),
+    A("committed", "🎯", "Committed", "Log 25 workouts", totalSessions, 25),
+    A("fifty", "🏛️", "Half Century", "Log 50 workouts", totalSessions, 50),
+    A("pr1", "🏆", "Record Breaker", "Set your first PR", prTotal, 1),
+    A("pr10", "🔥", "PR Hunter", "Set 10 personal records", prTotal, 10),
+    A("bench60", "🛡️", "Bench 60 Club", "Bench press 60 kg", bench, 60),
+    A("squat80", "🔩", "Squat 80 Club", "Back squat 80 kg", squat, 80),
+    A("dl100", "🦍", "Deadlift 100 Club", "Deadlift 100 kg", dl, 100),
+    A("pullup100", "🦅", "Century Pull", "100 strict pull-up reps, lifetime", pullupReps, 100),
+    A("vol10k", "🏗️", "10-Tonne Week", "10,000 kg volume in one week", bestWeek, 10000),
+    A("consist4", "📆", "Consistency Machine", "4 straight weeks with 3+ lifts", consecWeeks, 4),
+    A("cardio10", "🫀", "Engine Builder", "Log 10 cardio sessions", cardioCount, 10),
+  ];
+}
+
+export function waistTrend(bodyWeight) {
+  const w = (bodyWeight || []).filter((x) => x.waist).sort((a, b) => new Date(a.date) - new Date(b.date));
+  if (w.length === 0) return null;
+  const latest = w[w.length - 1];
+  const cutoff = Date.now() - 30 * DAY_MS;
+  const monthAgo = w.find((x) => new Date(x.date).getTime() >= cutoff) || w[0];
+  const delta = Math.round((latest.waist - monthAgo.waist) * 10) / 10;
+  return { latest: latest.waist, delta, count: w.length };
 }

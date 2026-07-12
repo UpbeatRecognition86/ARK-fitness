@@ -48,7 +48,7 @@ const ALTS = {
 export const WORKOUTS = {
   push: {
     id: "push", label: "PUSH", name: "Heavy Armor", icon: "🛡️",
-    color: "#FA4B4B", accent: "#FF7B7B",
+    color: "#FA114F", accent: "#FF6482",
     exercises: [
       { id: "barbell_bench_press", name: "Barbell Bench Press", sets: 4, repMin: 6, repMax: 8, startWeight: 40, increment: 2.5, type: "weighted", restSec: 150, main: true, note: "Shoulder blades pinned back & down. Bar to lower chest, elbows 45°. ALWAYS use safety pins or spotter.", altIds: ["db_bench_press", "machine_chest_press", "chest_dips"] },
       { id: "incline_db_press", name: "30° Incline DB Press", sets: 3, repMin: 10, repMax: 12, startWeight: 15, increment: 2.5, type: "weighted", restSec: 90, note: "Upper chest shelf builder. Slow 3-sec negative, feel UPPER chest.", altIds: ["incline_barbell_press"] },
@@ -59,7 +59,7 @@ export const WORKOUTS = {
   },
   legs: {
     id: "legs", label: "LEGS", name: "The Furnace", icon: "🔥",
-    color: "#FFA028", accent: "#FFC168",
+    color: "#FF9F0A", accent: "#FFC56E",
     exercises: [
       { id: "barbell_back_squat", name: "Barbell Back Squat", sets: 4, repMin: 8, repMax: 10, startWeight: 40, increment: 2.5, type: "weighted", restSec: 150, main: true, note: "Bar on upper traps. Brace like taking a punch. Hip crease below knee. Squat INSIDE the rack with pins set.", altIds: ["goblet_squats", "leg_press"] },
       { id: "db_rdls", name: "Dumbbell RDLs", sets: 4, repMin: 10, repMax: 12, startWeight: 16, increment: 2, type: "weighted", restSec: 90, note: "Hinge at hips. Feel hamstring stretch. Back flat.", altIds: ["barbell_rdl"] },
@@ -70,7 +70,7 @@ export const WORKOUTS = {
   },
   pull: {
     id: "pull", label: "PULL", name: "V-Taper", icon: "🦅",
-    color: "#2DD4BF", accent: "#5EEAD4",
+    color: "#00D9F5", accent: "#6EEBFF",
     exercises: [
       { id: "trap_bar_deadlift", name: "Trap-Bar / Barbell Deadlift", sets: 3, repMin: 6, repMax: 8, startWeight: 60, increment: 5, type: "weighted", restSec: 180, main: true, note: "Neutral spine, push the floor away. Bar/handles stay close to body. NO ego loading — your arm injury history means form is everything.", altIds: ["barbell_rdl", "rack_pulls"] },
       { id: "pullups", name: "Strict Pull-Ups", sets: 3, repMin: 3, repMax: 10, startWeight: 0, increment: 2.5, type: "weighted_bw", restSec: 120, note: "Dead hang start. Chin over bar. Add weight when 8×3 hit.", altIds: ["assisted_pullups", "inverted_rows"] },
@@ -82,7 +82,7 @@ export const WORKOUTS = {
   },
   sculptor: {
     id: "sculptor", label: "SCULPTOR", name: "Upper Hypertrophy", icon: "🗿",
-    color: "#A78BFA", accent: "#C4B5FD",
+    color: "#BF5AF2", accent: "#DDA9F8",
     exercises: [
       { id: "incline_db_press_light", name: "Incline DB Press (Light)", sets: 3, repMin: 12, repMax: 15, startWeight: 10, increment: 2.5, type: "weighted", restSec: 60, note: "Lighter than Push day. Focus on squeeze and stretch.", altIds: ["incline_barbell_press"] },
       { id: "cable_chest_flyes", name: "Cable Chest Flyes", sets: 3, repMin: 15, repMax: 15, startWeight: 10, increment: 2.5, type: "weighted", restSec: 60, note: "Stretch wide, squeeze together.", altIds: ["db_chest_flyes", "pec_deck", "svend_press"] },
@@ -126,3 +126,32 @@ export const CATALOG = (() => {
 export const BIG_THREE = ["barbell_bench_press", "barbell_back_squat", "trap_bar_deadlift"];
 
 export const BODYWEIGHT_TARGET = 78; // kg — the goal
+
+// ---- Warm-up protocols (Freeletics-style, per workout day) ----
+export const WARMUPS = {
+  push: ["2 min incline walk or rower", "15 band pull-aparts", "10 scapular push-ups", "Warm-up bench: empty bar ×10, then 30 kg ×6"],
+  legs: ["2 min bike or brisk walk", "10 bodyweight squats + 10 hip hinges", "30 s hip-flexor stretch each side", "Warm-up squat: empty bar ×10, then 30 kg ×6"],
+  pull: ["2 min rower or walk", "15 band pull-aparts", "10 cat-cows + 8 bird-dogs / side", "Warm-up pulls: 40 kg ×8, then 50 kg ×5"],
+  sculptor: ["90 s arm circles + light band work", "10 scapular push-ups", "1 light feel set of the first two moves"],
+};
+
+// ---- Setup checklists for the Big-3 (safety-critical) ----
+export const SETUP_GUIDES = {
+  barbell_bench_press: ["Safety pins just below chest height", "Eyes under bar, feet planted firm", "Shoulder blades pinched, slight arch", "Unrack — bar stacked over shoulders", "Touch lower chest, press up-and-back"],
+  barbell_back_squat: ["Bar on upper traps, hands close", "Pins set just below bottom position", "Big breath + brace before descent", "Knees track over toes", "Hip crease below knee → drive up"],
+  trap_bar_deadlift: ["Stand centered, bar over mid-foot", "Hinge down, grip, shins to bar", "Chest up, back flat, lats tight", "Push the floor away — bar stays close", "Tall lockout, no lean-back, control down"],
+};
+
+// ---- Daily coach lines (rotates by day) ----
+export const COACH_LINES = [
+  "The bar doesn't care how you feel. Show up anyway.",
+  "One more rep than last time. That's the whole game.",
+  "Discipline today, physique in December.",
+  "You're not tired. You're untrained. Fix it.",
+  "The body you want is built on days like this.",
+  "Log it or it didn't happen.",
+  "Strong dad energy starts now.",
+  "45 focused minutes. Then go live your life.",
+  "Muscle memory is real. Go collect what's yours.",
+  "Nobody's watching. That's why it counts.",
+];

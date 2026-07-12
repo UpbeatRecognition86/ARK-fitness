@@ -1,60 +1,93 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
-import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, Tooltip, BarChart, Bar, Cell, ReferenceLine } from "recharts";
+import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, Tooltip, BarChart, Bar, ReferenceLine } from "recharts";
 import {
-  ArrowLeft, ChevronRight, Check, TrendingUp, Minus as MinusIcon, Plus, Minus,
-  Flame, X, AlertCircle, Repeat, Settings as SettingsIcon, Download, Upload,
+  ArrowLeft, ChevronRight, ChevronDown, Check, TrendingUp, Minus as MinusIcon, Plus, Minus,
+  Flame, X, AlertCircle, Repeat, Settings as SettingsIcon, Download, Upload, Wind,
   Activity, Scale, Timer, SkipForward, Home, Dumbbell, BarChart3, History as HistoryIcon, Trophy,
 } from "lucide-react";
-import { WORKOUTS, CATALOG, ROTATION, CARDIO_TYPES, BIG_THREE, BODYWEIGHT_TARGET } from "./data.js";
+import { WORKOUTS, CATALOG, ROTATION, CARDIO_TYPES, BIG_THREE, BODYWEIGHT_TARGET, WARMUPS, SETUP_GUIDES, COACH_LINES } from "./data.js";
 import {
   loadData, saveData, exportJSON, validateImport, STORAGE_KEY,
   fmtDate, daysAgo, todayStr, getExerciseHistory, sessionVolume, sessionSets,
   getSuggestion, calcStreak, readiness, todayRecommendation, detectPRs,
   stalledLifts, muscleBalance, weeklyReport, heatmapData, bodyweightTrend,
-  calcACWR, bestE1RM,
+  calcACWR, bestE1RM, achievements, waistTrend,
 } from "./engine.js";
 
-// ---------------- THEME ----------------
+// ============ APPLE FITNESS DESIGN SYSTEM ============
 const T = {
-  bg: "#09090B", card: "#131316", cardHi: "#1A1A20", border: "#232329", border2: "#2E2E36",
-  text: "#F4F4F5", mid: "#9C9CA6", dim: "#5D5D68", faint: "#3A3A44",
-  green: "#4ADE80", yellow: "#FBBF24", red: "#FA4B4B", blue: "#60A5FA", violet: "#A78BFA",
+  bg: "#000000",
+  tile: "#1C1C1E", tileHi: "#2C2C2E", tileHi2: "#3A3A3C",
+  text: "#FFFFFF", sub: "#8E8E93", dim: "#636366", faint: "#48484A",
+  move: "#FA114F", exercise: "#92E82A", stand: "#00D9F5",
+  yellow: "#FFD60A", orange: "#FF9F0A", purple: "#BF5AF2", green: "#30D158",
+  hairline: "rgba(255,255,255,0.08)",
 };
-const BAND_COLOR = { primed: T.green, moderate: T.yellow, recover: T.red };
+const RING = {
+  move: ["#FA114F", "#FF5C86"],
+  exercise: ["#92E82A", "#D4FB53"],
+  stand: ["#00D9F5", "#5CEBFF"],
+};
+const BAND_GRAD = {
+  primed: RING.exercise,
+  moderate: ["#FFD60A", "#FFE97A"],
+  recover: RING.move,
+};
+const FEEL = { easy: "😌", solid: "💪", brutal: "🥵" };
+const ON = { "#FA114F": "#FFFFFF", "#FF9F0A": "#1F1200", "#00D9F5": "#002229", "#BF5AF2": "#FFFFFF", "#92E82A": "#122400" };
+const onColor = (c) => ON[c] || "#000";
 
-// ---------------- SMALL PARTS ----------------
+const tile = (o = {}) => ({ background: T.tile, borderRadius: 20, padding: 16, ...o });
+const tileSub = (o = {}) => ({ background: T.tileHi, borderRadius: 14, ...o });
+const rise = (i = 0) => ({ animation: "riseIn 0.55s cubic-bezier(0.22, 1, 0.36, 1) both", animationDelay: `${Math.min(i, 9) * 0.07}s` });
 
-function Ring({ size = 120, stroke = 10, pct = 0, color = T.green, track = "#1E1E24", children }) {
-  const r = (size - stroke) / 2;
-  const c = 2 * Math.PI * r;
-  const off = c * (1 - Math.min(1, Math.max(0, pct)));
+function SectionTitle({ children, right, style }) {
   return (
-    <div style={{ position: "relative", width: size, height: size }}>
-      <svg width={size} height={size} style={{ transform: "rotate(-90deg)" }}>
-        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={track} strokeWidth={stroke} />
-        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={color} strokeWidth={stroke}
-          strokeDasharray={c} strokeDashoffset={off} strokeLinecap="round" style={{ transition: "stroke-dashoffset 0.6s ease" }} />
-      </svg>
-      <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
-        {children}
-      </div>
-    </div>
-  );
-}
-
-function SectionLabel({ children, right }) {
-  return (
-    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", margin: "0 0 10px" }}>
-      <div style={{ fontSize: 10, letterSpacing: 2.5, color: T.dim, fontWeight: 700 }}>{children}</div>
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", margin: "4px 2px 10px", ...style }}>
+      <div style={{ fontSize: 20, fontWeight: 800, color: T.text, letterSpacing: -0.4 }}>{children}</div>
       {right}
     </div>
   );
 }
 
-function Card({ children, style, onClick }) {
+function Label({ children, color = T.sub }) {
+  return <div style={{ fontSize: 12, fontWeight: 700, color, letterSpacing: 0.1 }}>{children}</div>;
+}
+
+function Ring({ size = 120, stroke = 11, pct = 0, colors = RING.exercise, track = "rgba(255,255,255,0.09)", children, id = "g" }) {
+  const r = (size - stroke) / 2, c = 2 * Math.PI * r;
+  const off = c * (1 - Math.min(1, Math.max(0, pct)));
   return (
-    <div onClick={onClick} style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 16, padding: 16, ...(onClick ? { cursor: "pointer", WebkitTapHighlightColor: "transparent" } : {}), ...style }}>
-      {children}
+    <div style={{ position: "relative", width: size, height: size }}>
+      <svg width={size} height={size} style={{ transform: "rotate(-90deg)" }}>
+        <defs>
+          <linearGradient id={id} x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stopColor={colors[0]} />
+            <stop offset="100%" stopColor={colors[1]} />
+          </linearGradient>
+        </defs>
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={track} strokeWidth={stroke} />
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={`url(#${id})`} strokeWidth={stroke}
+          strokeDasharray={c} strokeDashoffset={off} strokeLinecap="round"
+          style={{ transition: "stroke-dashoffset 0.9s cubic-bezier(0.22,1,0.36,1)" }} />
+      </svg>
+      <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>{children}</div>
+    </div>
+  );
+}
+
+function TripleRings({ rings, size = 150 }) {
+  const stroke = 14, gap = 3;
+  return (
+    <div style={{ position: "relative", width: size, height: size, flexShrink: 0 }}>
+      {rings.map((rg, i) => {
+        const s = size - i * (stroke * 2 + gap * 2);
+        return (
+          <div key={i} style={{ position: "absolute", top: (size - s) / 2, left: (size - s) / 2 }}>
+            <Ring size={s} stroke={stroke} pct={rg.pct} colors={rg.colors} id={`tri${i}`} />
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -62,11 +95,18 @@ function Card({ children, style, onClick }) {
 function Sheet({ open, onClose, title, children }) {
   if (!open) return null;
   return (
-    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", zIndex: 100, display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
-      <div onClick={(e) => e.stopPropagation()} style={{ width: "100%", maxWidth: 500, maxHeight: "88vh", overflowY: "auto", background: T.card, borderRadius: "20px 20px 0 0", border: `1px solid ${T.border2}`, borderBottom: "none", padding: "18px 18px calc(24px + env(safe-area-inset-bottom))" }}>
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 100, display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
+      <div onClick={(e) => e.stopPropagation()} style={{
+        width: "100%", maxWidth: 500, maxHeight: "88vh", overflowY: "auto",
+        background: T.tile, borderRadius: "22px 22px 0 0",
+        boxShadow: "0 -14px 50px rgba(0,0,0,0.7)",
+        padding: "10px 18px calc(26px + env(safe-area-inset-bottom))",
+        animation: "riseIn 0.4s cubic-bezier(0.22,1,0.36,1) both",
+      }}>
+        <div style={{ width: 36, height: 5, borderRadius: 3, background: T.tileHi2, margin: "0 auto 14px" }} />
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-          <div style={{ fontSize: 17, fontWeight: 800, color: T.text }}>{title}</div>
-          <button onClick={onClose} style={{ background: T.cardHi, border: `1px solid ${T.border}`, borderRadius: 10, width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center", color: T.mid, cursor: "pointer" }}><X size={16} /></button>
+          <div style={{ fontSize: 19, fontWeight: 800, color: T.text, letterSpacing: -0.3 }}>{title}</div>
+          <button onClick={onClose} style={{ ...tileSub({ borderRadius: 15 }), width: 30, height: 30, display: "flex", alignItems: "center", justifyContent: "center", color: T.sub, cursor: "pointer", border: "none" }}><X size={15} /></button>
         </div>
         {children}
       </div>
@@ -84,27 +124,27 @@ function beep() {
       o.frequency.value = 880; g.gain.value = 0.12;
       o.start(ctx.currentTime + t); o.stop(ctx.currentTime + t + 0.15);
     });
-  } catch { /* iOS may block — timer still shows visually */ }
+  } catch { /* visual timer still works */ }
 }
 
-// ---------------- SET ROW ----------------
+// ============ SET ROW ============
 
 function SetRow({ setIdx, set, exercise, suggestion, onChange, onComplete, isActive, color }) {
   const isWeighted = exercise.type === "weighted" || exercise.type === "weighted_bw";
   const isTime = exercise.type === "time";
-
   const adjW = (d) => onChange({ ...set, weight: Math.max(0, (parseFloat(set.weight) || suggestion.weight || 0) + d) });
   const adjR = (d) => onChange({ ...set, reps: Math.max(0, (parseInt(set.reps) || (isTime ? 30 : exercise.repMin)) + d) });
 
   const Step = ({ children, onClick }) => (
-    <button onClick={onClick} style={{ width: 40, height: 40, borderRadius: 10, border: `1px solid ${T.border2}`, background: T.cardHi, color: T.text, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, WebkitTapHighlightColor: "transparent", touchAction: "manipulation" }}>{children}</button>
+    <button onClick={onClick} style={{ ...tileSub({ borderRadius: 12 }), width: 40, height: 40, border: "none", color: T.text, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, WebkitTapHighlightColor: "transparent", touchAction: "manipulation" }}>{children}</button>
   );
+  const inputStyle = { flex: 1, minWidth: 0, background: "#000", border: `1px solid ${T.hairline}`, borderRadius: 12, padding: "11px 4px", color: T.text, fontSize: 20, fontWeight: 700, fontFamily: "inherit", textAlign: "center", outline: "none", WebkitAppearance: "none" };
 
   if (set.done) {
     return (
-      <div style={{ display: "flex", alignItems: "center", padding: "11px 12px", background: "rgba(74,222,128,0.07)", borderRadius: 12, marginBottom: 6, border: "1px solid rgba(74,222,128,0.22)" }}>
-        <div style={{ width: 30, fontSize: 11, color: T.green, fontWeight: 800 }}>S{setIdx + 1}</div>
-        <div style={{ flex: 1, fontSize: 14, color: "#B7EFC5" }}>
+      <div style={{ display: "flex", alignItems: "center", padding: "11px 12px", background: "rgba(146,232,42,0.12)", borderRadius: 14, marginBottom: 6 }}>
+        <div style={{ width: 30, fontSize: 11, color: T.exercise, fontWeight: 800 }}>S{setIdx + 1}</div>
+        <div style={{ flex: 1, fontSize: 14, color: "#DBF7B8" }}>
           {isWeighted && set.weight ? <><b style={{ color: T.text }}>{set.weight}</b> kg × </> : null}
           <b style={{ color: T.text }}>{set.reps}</b> {isTime ? "sec" : "reps"}
         </div>
@@ -114,7 +154,7 @@ function SetRow({ setIdx, set, exercise, suggestion, onChange, onComplete, isAct
   }
 
   return (
-    <div style={{ padding: 12, background: isActive ? T.cardHi : "#101014", borderRadius: 12, marginBottom: 6, border: `1px solid ${isActive ? color + "44" : T.border}` }}>
+    <div style={{ padding: 12, background: isActive ? T.tileHi : "#111112", borderRadius: 16, marginBottom: 7, border: isActive ? `1.5px solid ${color}66` : "1.5px solid transparent" }}>
       <div style={{ display: "flex", alignItems: "center", marginBottom: 8 }}>
         <div style={{ width: 30, fontSize: 11, color, fontWeight: 800 }}>S{setIdx + 1}</div>
         <div style={{ flex: 1, fontSize: 10, color: T.dim, letterSpacing: 0.5 }}>
@@ -128,8 +168,7 @@ function SetRow({ setIdx, set, exercise, suggestion, onChange, onComplete, isAct
           <div style={{ fontSize: 9, color: T.dim, width: 30, letterSpacing: 1, flexShrink: 0 }}>KG</div>
           <Step onClick={() => adjW(-2.5)}><Minus size={15} /></Step>
           <input type="number" inputMode="decimal" value={set.weight ?? ""} placeholder={`${suggestion.weight}`}
-            onChange={(e) => onChange({ ...set, weight: e.target.value })}
-            style={{ flex: 1, minWidth: 0, background: "#0C0C0F", border: `1px solid ${T.border2}`, borderRadius: 10, padding: "11px 4px", color: T.text, fontSize: 19, fontWeight: 700, fontFamily: "inherit", textAlign: "center", outline: "none", WebkitAppearance: "none" }} />
+            onChange={(e) => onChange({ ...set, weight: e.target.value })} style={inputStyle} />
           <Step onClick={() => adjW(2.5)}><Plus size={15} /></Step>
         </div>
       )}
@@ -137,20 +176,25 @@ function SetRow({ setIdx, set, exercise, suggestion, onChange, onComplete, isAct
         <div style={{ fontSize: 9, color: T.dim, width: 30, letterSpacing: 1, flexShrink: 0 }}>{isTime ? "SEC" : "REP"}</div>
         <Step onClick={() => adjR(-1)}><Minus size={15} /></Step>
         <input type="number" inputMode="numeric" value={set.reps ?? ""} placeholder={exercise.repMin === exercise.repMax ? `${exercise.repMax}` : `${exercise.repMin}–${exercise.repMax}`}
-          onChange={(e) => onChange({ ...set, reps: e.target.value })}
-          style={{ flex: 1, minWidth: 0, background: "#0C0C0F", border: `1px solid ${T.border2}`, borderRadius: 10, padding: "11px 4px", color: T.text, fontSize: 19, fontWeight: 700, fontFamily: "inherit", textAlign: "center", outline: "none", WebkitAppearance: "none" }} />
+          onChange={(e) => onChange({ ...set, reps: e.target.value })} style={inputStyle} />
         <Step onClick={() => adjR(1)}><Plus size={15} /></Step>
       </div>
-      <button onClick={onComplete} disabled={!set.reps} style={{ width: "100%", padding: 14, borderRadius: 12, border: "none", background: set.reps ? color : T.cardHi, color: set.reps ? "#0A0A0A" : T.faint, fontSize: 12, fontWeight: 800, letterSpacing: 2, cursor: set.reps ? "pointer" : "not-allowed", fontFamily: "inherit", WebkitTapHighlightColor: "transparent", touchAction: "manipulation" }}>
+      <button onClick={onComplete} disabled={!set.reps} style={{
+        width: "100%", padding: 14, borderRadius: 13, border: "none",
+        background: set.reps ? color : T.tileHi,
+        color: set.reps ? onColor(color) : T.faint, fontSize: 12, fontWeight: 800, letterSpacing: 2,
+        cursor: set.reps ? "pointer" : "not-allowed", fontFamily: "inherit",
+        WebkitTapHighlightColor: "transparent", touchAction: "manipulation",
+      }}>
         ✓ LOG SET
       </button>
     </div>
   );
 }
 
-// ---------------- EXERCISE CARD (with alternates) ----------------
+// ============ EXERCISE CARD ============
 
-function ExerciseCard({ slotExercise, activeExercise, sessionData, history, isExpanded, onToggle, onUpdate, onSwap, color }) {
+function ExerciseCard({ slotExercise, activeExercise, sessionData, history, isExpanded, onToggle, onUpdate, onSwap, color, idx }) {
   const ex = activeExercise;
   const suggestion = useMemo(() => getSuggestion(ex, history), [ex.id, history.length]);
   const sets = sessionData?.sets || Array.from({ length: ex.sets }, () => ({ weight: "", reps: "", done: false }));
@@ -158,7 +202,9 @@ function ExerciseCard({ slotExercise, activeExercise, sessionData, history, isEx
   const activeIdx = sets.findIndex((s) => !s.done);
   const isComplete = completed === ex.sets;
   const [showAlts, setShowAlts] = useState(false);
+  const [showSetup, setShowSetup] = useState(false);
   const canSwap = (slotExercise.altIds?.length > 0 || ex.id !== slotExercise.id) && completed === 0;
+  const setup = SETUP_GUIDES[ex.id];
 
   const updateSet = (i, ns) => {
     const arr = [...sets]; arr[i] = ns;
@@ -166,45 +212,65 @@ function ExerciseCard({ slotExercise, activeExercise, sessionData, history, isEx
     onUpdate({ ...sessionData, sets: arr });
   };
 
-  const progColor = suggestion.progression === "up" ? T.green : suggestion.progression === "stalled" ? T.red : suggestion.progression === "hold" ? T.yellow : suggestion.progression === "reset" ? T.blue : color;
+  const progColor = suggestion.progression === "up" ? T.exercise : suggestion.progression === "stalled" ? T.move : suggestion.progression === "hold" ? T.yellow : suggestion.progression === "reset" ? T.stand : color;
   const ProgIcon = suggestion.progression === "up" ? TrendingUp : suggestion.progression === "stalled" || suggestion.progression === "hold" ? AlertCircle : MinusIcon;
 
   return (
-    <div style={{ background: T.card, borderRadius: 14, border: `1px solid ${isExpanded ? color + "44" : T.border}`, marginBottom: 10, overflow: "hidden" }}>
-      <div onClick={onToggle} style={{ padding: "13px 13px", cursor: "pointer", display: "flex", alignItems: "center", gap: 10, WebkitTapHighlightColor: "transparent" }}>
-        <div style={{ width: 4, height: 36, background: isComplete ? T.green : color, borderRadius: 2, flexShrink: 0 }} />
+    <div style={{ ...tile({ padding: 0, marginBottom: 10 }), overflow: "hidden", ...rise(idx) }}>
+      <div onClick={onToggle} style={{ padding: 13, cursor: "pointer", display: "flex", alignItems: "center", gap: 10, WebkitTapHighlightColor: "transparent" }}>
+        <div style={{ width: 4, height: 36, background: isComplete ? T.exercise : color, borderRadius: 2, flexShrink: 0 }} />
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 13.5, fontWeight: 700, color: T.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 6 }}>
+          <div style={{ fontSize: 14.5, fontWeight: 700, color: T.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 6 }}>
             {ex.name}
-            {slotExercise.main && <span style={{ fontSize: 8, letterSpacing: 1, background: color + "22", color, padding: "2px 6px", borderRadius: 5, fontWeight: 800, flexShrink: 0 }}>MAIN</span>}
-            {ex.id !== slotExercise.id && <span style={{ fontSize: 8, letterSpacing: 1, background: T.cardHi, color: T.mid, padding: "2px 6px", borderRadius: 5, fontWeight: 800, flexShrink: 0 }}>SWAP</span>}
+            {slotExercise.main && <span style={{ fontSize: 8, letterSpacing: 1, background: color, color: onColor(color), padding: "2.5px 7px", borderRadius: 6, fontWeight: 800, flexShrink: 0 }}>MAIN</span>}
+            {ex.id !== slotExercise.id && <span style={{ fontSize: 8, letterSpacing: 1, background: T.tileHi, color: T.sub, padding: "2.5px 7px", borderRadius: 6, fontWeight: 800, flexShrink: 0 }}>SWAP</span>}
           </div>
-          <div style={{ fontSize: 10.5, color: T.mid, marginTop: 2 }}>
+          <div style={{ fontSize: 11, color: T.sub, marginTop: 2 }}>
             {ex.sets}×{ex.repMin === ex.repMax ? ex.repMax : `${ex.repMin}–${ex.repMax}`}
             {suggestion.weight > 0 && ` · ${suggestion.weight}kg`}
             {` · rest ${ex.restSec}s`}
           </div>
         </div>
         {isComplete ? (
-          <div style={{ width: 26, height: 26, borderRadius: 13, background: T.green, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><Check size={13} color="#0A0A0A" strokeWidth={3.5} /></div>
+          <div style={{ width: 26, height: 26, borderRadius: 13, background: T.exercise, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><Check size={13} color="#122400" strokeWidth={3.5} /></div>
         ) : completed > 0 ? (
-          <div style={{ fontSize: 11.5, fontWeight: 800, color, flexShrink: 0 }}>{completed}/{ex.sets}</div>
-        ) : <div style={{ fontSize: 11.5, color: T.faint, flexShrink: 0 }}>0/{ex.sets}</div>}
+          <div style={{ fontSize: 12.5, fontWeight: 800, color, flexShrink: 0 }}>{completed}/{ex.sets}</div>
+        ) : <div style={{ fontSize: 12.5, color: T.faint, flexShrink: 0 }}>0/{ex.sets}</div>}
         <ChevronRight size={16} color={T.dim} style={{ transform: isExpanded ? "rotate(90deg)" : "none", transition: "transform 0.2s", flexShrink: 0 }} />
       </div>
 
       {isExpanded && (
         <div style={{ padding: "0 11px 11px" }}>
-          <div style={{ background: color + "10", borderLeft: `3px solid ${color}`, padding: "9px 11px", borderRadius: "0 10px 10px 0", marginBottom: 8 }}>
-            <div style={{ fontSize: 11, color: color, lineHeight: 1.45, marginBottom: 5 }}>{ex.note}</div>
+          <div style={{ background: "#111112", borderLeft: `3px solid ${color}`, padding: "9px 11px", borderRadius: "0 12px 12px 0", marginBottom: 8 }}>
+            <div style={{ fontSize: 11, color, lineHeight: 1.45, marginBottom: 5 }}>{ex.note}</div>
             <div style={{ display: "flex", alignItems: "flex-start", gap: 5, fontSize: 10.5, color: progColor, fontWeight: 700, lineHeight: 1.4 }}>
               <ProgIcon size={12} style={{ flexShrink: 0, marginTop: 1 }} />
               <span>{suggestion.reason}</span>
             </div>
           </div>
 
+          {setup && (
+            <div style={{ ...tileSub({ marginBottom: 8 }), overflow: "hidden" }}>
+              <div onClick={() => setShowSetup(!showSetup)} style={{ padding: "9px 12px", display: "flex", alignItems: "center", gap: 7, cursor: "pointer" }}>
+                <AlertCircle size={13} color={T.yellow} />
+                <div style={{ flex: 1, fontSize: 10.5, fontWeight: 800, letterSpacing: 1.4, color: T.yellow }}>SETUP CHECK</div>
+                <ChevronDown size={14} color={T.dim} style={{ transform: showSetup ? "rotate(180deg)" : "none", transition: "0.2s" }} />
+              </div>
+              {showSetup && (
+                <div style={{ padding: "0 12px 10px" }}>
+                  {setup.map((s, i) => (
+                    <div key={i} style={{ display: "flex", gap: 8, marginBottom: 5, alignItems: "flex-start" }}>
+                      <div style={{ width: 16, height: 16, borderRadius: 8, background: "rgba(255,214,10,0.18)", color: T.yellow, fontSize: 9, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: 1 }}>{i + 1}</div>
+                      <div style={{ fontSize: 11, color: T.sub, lineHeight: 1.45 }}>{s}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           {canSwap && (
-            <button onClick={() => setShowAlts(!showAlts)} style={{ width: "100%", padding: "9px", marginBottom: 8, borderRadius: 10, border: `1px dashed ${T.border2}`, background: "transparent", color: T.mid, fontSize: 10.5, fontWeight: 700, letterSpacing: 1, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+            <button onClick={() => setShowAlts(!showAlts)} style={{ width: "100%", padding: 9, marginBottom: 8, borderRadius: 12, border: `1px dashed ${T.faint}`, background: "transparent", color: T.sub, fontSize: 10.5, fontWeight: 700, letterSpacing: 1, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
               <Repeat size={12} /> {showAlts ? "HIDE ALTERNATIVES" : "SWAP EXERCISE (equipment busy?)"}
             </button>
           )}
@@ -217,7 +283,7 @@ function ExerciseCard({ slotExercise, activeExercise, sessionData, history, isEx
                 const lastUsed = getExerciseHistory(aid, history, 1)[0];
                 return (
                   <div key={aid} onClick={() => { if (!isCurrent) { onSwap(aid); setShowAlts(false); } }}
-                    style={{ padding: "10px 12px", marginBottom: 5, borderRadius: 10, border: `1px solid ${isCurrent ? color + "55" : T.border}`, background: isCurrent ? color + "12" : T.cardHi, cursor: isCurrent ? "default" : "pointer", display: "flex", alignItems: "center", gap: 8 }}>
+                    style={{ padding: "10px 12px", marginBottom: 5, borderRadius: 12, background: isCurrent ? T.tileHi2 : T.tileHi, border: isCurrent ? `1.5px solid ${color}` : "1.5px solid transparent", cursor: isCurrent ? "default" : "pointer", display: "flex", alignItems: "center", gap: 8 }}>
                     <div style={{ flex: 1 }}>
                       <div style={{ fontSize: 12, fontWeight: 700, color: isCurrent ? color : T.text }}>{alt.name}</div>
                       <div style={{ fontSize: 9.5, color: T.dim, marginTop: 1 }}>
@@ -243,7 +309,77 @@ function ExerciseCard({ slotExercise, activeExercise, sessionData, history, isEx
   );
 }
 
-// ---------------- WORKOUT VIEW ----------------
+// ============ WARM-UP ============
+
+function WarmupCard({ workoutType }) {
+  const [open, setOpen] = useState(false);
+  const [done, setDone] = useState({});
+  const items = WARMUPS[workoutType] || [];
+  const doneCount = Object.values(done).filter(Boolean).length;
+  return (
+    <div style={{ ...tile({ padding: 0, marginBottom: 10 }), overflow: "hidden", ...rise(0) }}>
+      <div onClick={() => setOpen(!open)} style={{ padding: "12px 13px", display: "flex", alignItems: "center", gap: 10, cursor: "pointer", WebkitTapHighlightColor: "transparent" }}>
+        <div style={{ width: 34, height: 34, borderRadius: 11, background: "rgba(0,217,245,0.16)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+          <Wind size={16} color={T.stand} />
+        </div>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: T.text }}>Warm-Up</div>
+          <div style={{ fontSize: 10.5, color: T.sub, marginTop: 1 }}>~4 min · {doneCount}/{items.length} done · never skip this</div>
+        </div>
+        <ChevronDown size={15} color={T.dim} style={{ transform: open ? "rotate(180deg)" : "none", transition: "0.2s" }} />
+      </div>
+      {open && (
+        <div style={{ padding: "0 13px 12px" }}>
+          {items.map((it, i) => {
+            const isDone = !!done[i];
+            return (
+              <div key={i} onClick={() => setDone({ ...done, [i]: !isDone })} style={{ display: "flex", gap: 9, alignItems: "center", padding: "9px 11px", marginBottom: 5, borderRadius: 12, background: isDone ? "rgba(146,232,42,0.10)" : T.tileHi, cursor: "pointer" }}>
+                <div style={{ width: 18, height: 18, borderRadius: 9, border: `1.5px solid ${isDone ? T.exercise : T.faint}`, background: isDone ? T.exercise : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                  {isDone && <Check size={11} color="#122400" strokeWidth={3.5} />}
+                </div>
+                <div style={{ fontSize: 11.5, color: isDone ? T.dim : T.sub, lineHeight: 1.4, textDecoration: isDone ? "line-through" : "none" }}>{it}</div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============ FEEL SHEET ============
+
+function FeelSheet({ open, onPick, onSkip }) {
+  const [note, setNote] = useState("");
+  const opts = [
+    { id: "easy", emoji: "😌", label: "Easy", desc: "Had more in the tank" },
+    { id: "solid", emoji: "💪", label: "Solid", desc: "Right at the edge — perfect" },
+    { id: "brutal", emoji: "🥵", label: "Brutal", desc: "Emptied everything" },
+  ];
+  if (!open) return null;
+  return (
+    <Sheet open={open} onClose={onSkip} title="How was it?">
+      <div style={{ fontSize: 11.5, color: T.sub, marginBottom: 14, lineHeight: 1.5 }}>Your rating feeds tomorrow's readiness score — be honest, not heroic.</div>
+      {opts.map((o, i) => (
+        <div key={o.id} onClick={() => onPick(o.id, note)} style={{ ...tileSub({ borderRadius: 16 }), padding: "14px 16px", marginBottom: 8, display: "flex", alignItems: "center", gap: 13, cursor: "pointer", WebkitTapHighlightColor: "transparent", ...rise(i) }}>
+          <div style={{ fontSize: 28 }}>{o.emoji}</div>
+          <div>
+            <div style={{ fontSize: 15, fontWeight: 800, color: T.text }}>{o.label}</div>
+            <div style={{ fontSize: 11, color: T.dim, marginTop: 1 }}>{o.desc}</div>
+          </div>
+          <ChevronRight size={16} color={T.faint} style={{ marginLeft: "auto" }} />
+        </div>
+      ))}
+      <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Optional note (e.g., shoulder felt tight)"
+        style={{ width: "100%", boxSizing: "border-box", marginTop: 6, background: "#000", border: `1px solid ${T.hairline}`, borderRadius: 12, padding: "12px 14px", color: T.text, fontSize: 13, fontFamily: "inherit", outline: "none" }} />
+      <button onClick={onSkip} style={{ width: "100%", padding: 12, marginTop: 10, background: "none", border: "none", color: T.dim, fontSize: 11, fontWeight: 700, letterSpacing: 1, cursor: "pointer", fontFamily: "inherit" }}>
+        SKIP RATING
+      </button>
+    </Sheet>
+  );
+}
+
+// ============ WORKOUT VIEW ============
 
 function WorkoutView({ data, workoutType, onBack, onSave }) {
   const workout = WORKOUTS[workoutType];
@@ -252,8 +388,9 @@ function WorkoutView({ data, workoutType, onBack, onSave }) {
     if (data.currentSession && data.currentSession.workoutType === workoutType) return data.currentSession;
     return { workoutType, startedAt: new Date().toISOString(), exercises: {}, swaps: {} };
   });
-  const [timer, setTimer] = useState(null); // {endsAt, total}
+  const [timer, setTimer] = useState(null);
   const [now, setNow] = useState(Date.now());
+  const [showFeel, setShowFeel] = useState(false);
 
   useEffect(() => {
     if (!timer) return;
@@ -270,7 +407,6 @@ function WorkoutView({ data, workoutType, onBack, onSave }) {
   const updateExercise = (activeId, exData, restSec) => {
     const ns = { ...session, exercises: { ...session.exercises, [activeId]: exData } };
     setSession(ns); onSave(ns, false);
-    // start rest timer when a set was just completed
     if (data.settings?.restTimer !== false && restSec) setTimer({ endsAt: Date.now() + restSec * 1000, total: restSec });
   };
 
@@ -285,16 +421,21 @@ function WorkoutView({ data, workoutType, onBack, onSave }) {
   const progress = totalSets ? (doneSets / totalSets) * 100 : 0;
   const remaining = timer ? Math.max(0, Math.ceil((timer.endsAt - now) / 1000)) : 0;
 
-  const handleFinish = () => {
-    const completed = { ...session, date: todayStr(), completedAt: new Date().toISOString() };
+  const finalize = (feel, note) => {
+    const completed = { ...session, date: todayStr(), completedAt: new Date().toISOString(), ...(feel ? { feel } : {}), ...(note ? { note } : {}) };
+    setShowFeel(false);
     onSave(completed, true);
   };
 
   return (
-    <div style={{ minHeight: "100vh", background: T.bg, color: T.text, paddingBottom: 130 }}>
-      <div style={{ position: "sticky", top: 0, zIndex: 20, background: "rgba(9,9,11,0.92)", backdropFilter: "blur(12px)", borderBottom: `1px solid ${workout.color}26`, padding: "12px 14px calc(10px)" , paddingTop: "calc(12px + env(safe-area-inset-top))" }}>
+    <div style={{ minHeight: "100vh", color: T.text, paddingBottom: 130 }}>
+      <div style={{
+        position: "sticky", top: 0, zIndex: 20,
+        background: "rgba(0,0,0,0.85)", backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)",
+        padding: "12px 14px 10px", paddingTop: "calc(12px + env(safe-area-inset-top))",
+      }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <button onClick={onBack} style={{ background: "none", border: "none", color: T.mid, cursor: "pointer", padding: 4, display: "flex" }}><ArrowLeft size={20} /></button>
+          <button onClick={onBack} style={{ background: "none", border: "none", color: T.sub, cursor: "pointer", padding: 4, display: "flex" }}><ArrowLeft size={20} /></button>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 9, letterSpacing: 3, color: workout.color, fontWeight: 800 }}>{workout.label}</div>
             <div style={{ fontSize: 16, fontWeight: 800, marginTop: 1 }}>{workout.icon} {workout.name}</div>
@@ -304,14 +445,15 @@ function WorkoutView({ data, workoutType, onBack, onSave }) {
             <div style={{ fontSize: 8, color: T.dim, letterSpacing: 1 }}>{vol > 0 ? `${Math.round(vol)} KG VOL` : "SETS"}</div>
           </div>
         </div>
-        <div style={{ marginTop: 9, height: 3, background: T.cardHi, borderRadius: 2, overflow: "hidden" }}>
+        <div style={{ marginTop: 9, height: 4, background: T.tileHi, borderRadius: 2, overflow: "hidden" }}>
           <div style={{ height: "100%", width: `${progress}%`, background: workout.color, transition: "width 0.3s" }} />
         </div>
       </div>
 
       <div style={{ padding: 14 }}>
-        {slots.map(({ slot, active }) => (
-          <ExerciseCard key={slot.id} slotExercise={slot} activeExercise={active}
+        <WarmupCard workoutType={workoutType} />
+        {slots.map(({ slot, active }, i) => (
+          <ExerciseCard key={slot.id} idx={i + 1} slotExercise={slot} activeExercise={active}
             sessionData={session.exercises[active.id]} history={data.history}
             isExpanded={expandedId === slot.id} onToggle={() => setExpandedId(expandedId === slot.id ? null : slot.id)}
             onUpdate={(d) => {
@@ -323,224 +465,239 @@ function WorkoutView({ data, workoutType, onBack, onSave }) {
         ))}
 
         {doneSets > 0 && (
-          <button onClick={handleFinish} style={{ width: "100%", padding: 16, marginTop: 12, borderRadius: 14, border: "none", background: workout.color, color: "#0A0A0A", fontSize: 13, fontWeight: 800, letterSpacing: 2, cursor: "pointer", fontFamily: "inherit", boxShadow: `0 6px 24px ${workout.color}40`, WebkitTapHighlightColor: "transparent" }}>
+          <button onClick={() => setShowFeel(true)} style={{ width: "100%", padding: 16, marginTop: 12, borderRadius: 16, border: "none", background: workout.color, color: onColor(workout.color), fontSize: 13, fontWeight: 800, letterSpacing: 2, cursor: "pointer", fontFamily: "inherit", WebkitTapHighlightColor: "transparent" }}>
             FINISH · {doneSets} SETS · {Math.round(vol)} KG
           </button>
         )}
       </div>
 
       {timer && remaining > 0 && (
-        <div style={{ position: "fixed", left: "50%", transform: "translateX(-50%)", bottom: "calc(20px + env(safe-area-inset-bottom))", zIndex: 50, background: T.cardHi, border: `1px solid ${workout.color}66`, borderRadius: 999, padding: "10px 16px", display: "flex", alignItems: "center", gap: 12, boxShadow: "0 8px 32px rgba(0,0,0,0.6)", minWidth: 200 }}>
+        <div style={{
+          position: "fixed", left: "50%", transform: "translateX(-50%)",
+          bottom: "calc(20px + env(safe-area-inset-bottom))", zIndex: 50,
+          background: "rgba(44,44,46,0.92)", backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)",
+          borderRadius: 999, padding: "11px 17px",
+          boxShadow: "0 12px 40px rgba(0,0,0,0.6)",
+          display: "flex", alignItems: "center", gap: 12, minWidth: 210,
+        }}>
           <Timer size={16} color={workout.color} />
           <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 17, fontWeight: 800, color: T.text, fontVariantNumeric: "tabular-nums" }}>
+            <div style={{ fontSize: 18, fontWeight: 800, color: T.text, fontVariantNumeric: "tabular-nums" }}>
               {Math.floor(remaining / 60)}:{String(remaining % 60).padStart(2, "0")}
             </div>
-            <div style={{ height: 3, background: T.border, borderRadius: 2, marginTop: 3, overflow: "hidden" }}>
+            <div style={{ height: 3, background: "rgba(255,255,255,0.12)", borderRadius: 2, marginTop: 3, overflow: "hidden" }}>
               <div style={{ height: "100%", width: `${(remaining / timer.total) * 100}%`, background: workout.color, transition: "width 0.3s linear" }} />
             </div>
           </div>
-          <button onClick={() => setTimer(null)} style={{ background: "none", border: "none", color: T.mid, cursor: "pointer", display: "flex", alignItems: "center", gap: 3, fontSize: 10, fontWeight: 700, fontFamily: "inherit" }}>
+          <button onClick={() => setTimer(null)} style={{ background: "none", border: "none", color: T.sub, cursor: "pointer", display: "flex", alignItems: "center", gap: 3, fontSize: 10, fontWeight: 700, fontFamily: "inherit" }}>
             <SkipForward size={14} /> SKIP
           </button>
         </div>
       )}
+
+      <FeelSheet open={showFeel} onPick={(feel, note) => finalize(feel, note)} onSkip={() => finalize(null, null)} />
     </div>
   );
 }
 
-// ---------------- TODAY TAB ----------------
+// ============ TODAY — decluttered, Apple Fitness style ============
 
-function TodayView({ data, banner, onDismissBanner, onStartWorkout, onLogCardio, onLogWeight, onOpenSettings }) {
+function TodayView({ data, banner, onDismissBanner, onStartWorkout, onLogCardio, onLogWeight, onOpenSettings, onOpenAwards }) {
   const r = useMemo(() => readiness(data), [data.history.length, data.cardio.length]);
   const rec = useMemo(() => todayRecommendation(data), [data.history.length, data.cardio.length, data.rotationIndex]);
   const report = useMemo(() => weeklyReport(data), [data.history.length, data.cardio.length]);
   const streak = calcStreak(data.history, data.cardio);
-  const bw = useMemo(() => bodyweightTrend(data.bodyWeight), [data.bodyWeight.length]);
-  const bandColor = BAND_COLOR[r.band];
-  const next = WORKOUTS[ROTATION[data.rotationIndex]];
+  const aws = useMemo(() => achievements(data), [data.history.length, data.cardio.length]);
+  const earned = aws.filter((a) => a.earned).length;
+  const coachLine = COACH_LINES[Math.floor(Date.now() / 86400000) % COACH_LINES.length];
+  const volPct = report.lastVolume > 0 ? Math.min(1, report.volume / report.lastVolume) : (report.volume > 0 ? 1 : 0);
+  let block = 0;
 
   return (
     <div style={{ padding: "0 14px" }}>
-      <div style={{ padding: "22px 2px 16px", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+      <div style={{ padding: "20px 2px 14px", display: "flex", justifyContent: "space-between", alignItems: "flex-start", ...rise(block++) }}>
         <div>
-          <div style={{ fontSize: 10, letterSpacing: 3.5, color: T.red, fontWeight: 800 }}>ARK FITNESS</div>
-          <div style={{ fontSize: 25, fontWeight: 800, marginTop: 2, letterSpacing: -0.5 }}>
-            {new Date().toLocaleDateString("en-US", { weekday: "long" })}
-          </div>
-          <div style={{ fontSize: 11.5, color: T.mid, marginTop: 2 }}>{new Date().toLocaleDateString("en-US", { month: "long", day: "numeric" })} · Barbell Era</div>
+          <div style={{ fontSize: 12, fontWeight: 700, color: T.sub }}>{new Date().toLocaleDateString("en-US", { month: "long", day: "numeric" }).toUpperCase()}</div>
+          <div style={{ fontSize: 32, fontWeight: 800, marginTop: 1, letterSpacing: -0.9 }}>Today</div>
         </div>
-        <button onClick={onOpenSettings} style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 12, width: 38, height: 38, display: "flex", alignItems: "center", justifyContent: "center", color: T.mid, cursor: "pointer" }}><SettingsIcon size={17} /></button>
+        <button onClick={onOpenSettings} style={{ ...tileSub({ borderRadius: 17 }), width: 36, height: 36, border: "none", display: "flex", alignItems: "center", justifyContent: "center", color: T.sub, cursor: "pointer" }}><SettingsIcon size={17} /></button>
       </div>
 
       {banner && (
-        <Card style={{ marginBottom: 12, borderColor: "rgba(74,222,128,0.35)", background: "rgba(74,222,128,0.06)", display: "flex", alignItems: "center", gap: 10, padding: "12px 14px" }}>
-          <Trophy size={18} color={T.green} style={{ flexShrink: 0 }} />
+        <div style={{ ...tile({ padding: "12px 14px", marginBottom: 12 }), display: "flex", alignItems: "center", gap: 10, ...rise(block++) }}>
+          <Trophy size={18} color={T.exercise} style={{ flexShrink: 0 }} />
           <div style={{ flex: 1, fontSize: 12, color: T.text, lineHeight: 1.45 }}>{banner}</div>
           <button onClick={onDismissBanner} style={{ background: "none", border: "none", color: T.dim, cursor: "pointer" }}><X size={15} /></button>
-        </Card>
+        </div>
       )}
 
-      {/* Readiness + week rings */}
-      <Card style={{ display: "flex", gap: 14, alignItems: "center", marginBottom: 12 }}>
-        <Ring size={116} stroke={10} pct={r.score / 100} color={bandColor}>
-          <div style={{ fontSize: 30, fontWeight: 800, color: T.text, lineHeight: 1 }}>{r.score}</div>
-          <div style={{ fontSize: 9, letterSpacing: 1.5, color: bandColor, fontWeight: 800, marginTop: 3 }}>{r.label.toUpperCase()}</div>
-        </Ring>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 10, letterSpacing: 2, color: T.dim, fontWeight: 700, marginBottom: 7 }}>READINESS</div>
-          {r.factors.slice(0, 3).map((f, i) => (
-            <div key={i} style={{ display: "flex", gap: 6, marginBottom: 5, alignItems: "flex-start" }}>
-              <div style={{ width: 5, height: 5, borderRadius: 3, background: f.good ? T.green : T.yellow, marginTop: 4.5, flexShrink: 0 }} />
-              <div style={{ fontSize: 10.5, color: T.mid, lineHeight: 1.4 }}>{f.text}</div>
-            </div>
-          ))}
-        </div>
-      </Card>
-
-      {/* Recommendation */}
-      <div
-        onClick={() => rec.workout && onStartWorkout(rec.workout.id)}
-        style={{
-          background: rec.workout ? `linear-gradient(135deg, ${rec.workout.color}1F, ${rec.workout.color}08)` : `linear-gradient(135deg, ${T.blue}18, transparent)`,
-          border: `1px solid ${rec.workout ? rec.workout.color + "50" : T.blue + "40"}`,
-          borderRadius: 16, padding: 18, marginBottom: 12, cursor: rec.workout ? "pointer" : "default",
-          position: "relative", overflow: "hidden", WebkitTapHighlightColor: "transparent",
-        }}>
-        {rec.workout && <div style={{ position: "absolute", top: -12, right: -8, fontSize: 68, opacity: 0.08 }}>{rec.workout.icon}</div>}
-        <div style={{ fontSize: 9, letterSpacing: 3, color: rec.workout ? rec.workout.color : T.blue, fontWeight: 800 }}>
-          {rec.kind === "train" ? "UP NEXT" : rec.kind === "urgent" ? "OVERDUE" : rec.kind === "cardio" ? "COACH CALL" : "TODAY"}
-        </div>
-        <div style={{ fontSize: 20, fontWeight: 800, marginTop: 5, letterSpacing: -0.3 }}>{rec.title}</div>
-        <div style={{ fontSize: 11.5, color: T.mid, marginTop: 4, lineHeight: 1.5 }}>{rec.sub}</div>
+      {/* HERO */}
+      <div onClick={() => rec.workout && onStartWorkout(rec.workout.id)}
+        style={{ ...tile({ padding: 18, marginBottom: 10 }), cursor: rec.workout ? "pointer" : "default", position: "relative", overflow: "hidden", WebkitTapHighlightColor: "transparent", ...rise(block++) }}>
+        {rec.workout && <div style={{ position: "absolute", top: -14, right: -8, fontSize: 88, opacity: 0.10 }}>{rec.workout.icon}</div>}
+        <Label color={rec.workout ? rec.workout.color : T.stand}>{rec.kind === "train" ? "TODAY'S TRAINING" : rec.kind === "urgent" ? "OVERDUE" : rec.kind === "cardio" ? "COACH CALL" : "TODAY"}</Label>
+        <div style={{ fontSize: 23, fontWeight: 800, marginTop: 5, letterSpacing: -0.5 }}>{rec.title}</div>
+        <div style={{ fontSize: 12, color: T.sub, marginTop: 4, lineHeight: 1.5 }}>{rec.sub}</div>
         {rec.workout && (
-          <button style={{ marginTop: 13, padding: "12px 18px", background: rec.workout.color, color: "#0A0A0A", border: "none", borderRadius: 11, fontSize: 11, fontWeight: 800, letterSpacing: 2, cursor: "pointer", fontFamily: "inherit" }}>
+          <button style={{ marginTop: 14, padding: "13px 22px", background: rec.workout.color, color: onColor(rec.workout.color), border: "none", borderRadius: 13, fontSize: 12, fontWeight: 800, letterSpacing: 1.6, cursor: "pointer", fontFamily: "inherit" }}>
             START {rec.workout.label} →
           </button>
         )}
         {rec.kind === "cardio" && (
-          <button onClick={onLogCardio} style={{ marginTop: 13, padding: "12px 18px", background: T.blue, color: "#0A0A0A", border: "none", borderRadius: 11, fontSize: 11, fontWeight: 800, letterSpacing: 2, cursor: "pointer", fontFamily: "inherit" }}>
+          <button onClick={(e) => { e.stopPropagation(); onLogCardio(); }} style={{ marginTop: 14, padding: "13px 22px", background: T.stand, color: onColor(T.stand), border: "none", borderRadius: 13, fontSize: 12, fontWeight: 800, letterSpacing: 1.6, cursor: "pointer", fontFamily: "inherit" }}>
             LOG CARDIO →
           </button>
         )}
+        <div style={{ marginTop: 13, fontSize: 11, color: T.dim, fontStyle: "italic", lineHeight: 1.5 }}>"{coachLine}"</div>
       </div>
 
-      {/* Week snapshot */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 12 }}>
-        <Card style={{ padding: "12px 10px" }}>
-          <div style={{ fontSize: 20, fontWeight: 800, color: T.red, display: "flex", alignItems: "center", gap: 4 }}><Flame size={14} />{streak}</div>
-          <div style={{ fontSize: 8, color: T.dim, letterSpacing: 1, marginTop: 3 }}>STREAK</div>
-        </Card>
-        <Card style={{ padding: "12px 10px" }}>
-          <div style={{ fontSize: 20, fontWeight: 800, color: T.yellow }}>{report.sessions}<span style={{ fontSize: 11, color: T.dim }}>/4</span></div>
-          <div style={{ fontSize: 8, color: T.dim, letterSpacing: 1, marginTop: 3 }}>LIFTS THIS WK</div>
-        </Card>
-        <Card style={{ padding: "12px 10px" }}>
-          <div style={{ fontSize: 20, fontWeight: 800, color: T.blue }}>{report.cardioMin}<span style={{ fontSize: 11, color: T.dim }}>m</span></div>
-          <div style={{ fontSize: 8, color: T.dim, letterSpacing: 1, marginTop: 3 }}>CARDIO / 90m</div>
-        </Card>
-      </div>
-
-      {/* Quick actions */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 12 }}>
-        <Card onClick={onLogCardio} style={{ display: "flex", alignItems: "center", gap: 10, padding: "13px 14px" }}>
-          <Activity size={17} color={T.blue} />
-          <div>
-            <div style={{ fontSize: 12.5, fontWeight: 700 }}>Log Cardio</div>
-            <div style={{ fontSize: 9.5, color: T.dim }}>Zone-2 walk / run</div>
-          </div>
-        </Card>
-        <Card onClick={onLogWeight} style={{ display: "flex", alignItems: "center", gap: 10, padding: "13px 14px" }}>
-          <Scale size={17} color={T.violet} />
-          <div>
-            <div style={{ fontSize: 12.5, fontWeight: 700 }}>Log Weight</div>
-            <div style={{ fontSize: 9.5, color: T.dim }}>{bw ? `${bw.latest.kg} kg → ${BODYWEIGHT_TARGET}` : `Target ${BODYWEIGHT_TARGET} kg`}</div>
-          </div>
-        </Card>
-      </div>
-
-      {bw && bw.ratePerWeek != null && (
-        <Card style={{ marginBottom: 12, padding: "13px 14px" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <div style={{ fontSize: 18 }}>{bw.ratePerWeek < -0.05 ? "📉" : bw.ratePerWeek > 0.05 ? "📈" : "➡️"}</div>
-            <div style={{ fontSize: 11.5, color: T.mid, lineHeight: 1.5 }}>
-              {bw.ratePerWeek < -0.05
-                ? <>Losing <b style={{ color: T.green }}>{Math.abs(bw.ratePerWeek)} kg/week</b>.{bw.etaWeeks ? <> At this rate you hit <b style={{ color: T.text }}>{BODYWEIGHT_TARGET} kg in ~{bw.etaWeeks} weeks</b>.</> : null}</>
-                : bw.ratePerWeek > 0.05
-                  ? <>Weight trending <b style={{ color: T.yellow }}>up {bw.ratePerWeek} kg/week</b>. Deficit isn't real yet — audit the snacks.</>
-                  : <>Weight flat. Maintenance mode — tighten the deficit to move toward {BODYWEIGHT_TARGET} kg.</>}
+      {/* ACTIVITY RINGS */}
+      <div style={{ ...tile({ marginBottom: 10, padding: 18 }), display: "flex", gap: 18, alignItems: "center", ...rise(block++) }}>
+        <TripleRings size={148} rings={[
+          { pct: report.sessions / 4, colors: RING.move },
+          { pct: Math.min(1, report.cardioMin / 90), colors: RING.exercise },
+          { pct: volPct, colors: RING.stand },
+        ]} />
+        <div style={{ flex: 1 }}>
+          {[
+            { c: T.move, label: "Lifts", val: `${report.sessions}/4` },
+            { c: T.exercise, label: "Cardio", val: `${report.cardioMin}/90`, unit: "MIN" },
+            { c: T.stand, label: "Volume", val: report.volDelta != null ? `${report.volDelta > 0 ? "+" : ""}${report.volDelta}%` : `${(report.volume / 1000).toFixed(1)}k`, unit: report.volDelta != null ? "VS LAST WK" : "KG" },
+          ].map((row, i) => (
+            <div key={i} style={{ marginBottom: i < 2 ? 11 : 0 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: row.c }}>{row.label}</div>
+              <div style={{ fontSize: 21, fontWeight: 800, color: T.text, letterSpacing: -0.4, lineHeight: 1.1 }}>
+                {row.val}<span style={{ fontSize: 10, color: T.dim, fontWeight: 700, marginLeft: 3 }}>{row.unit || ""}</span>
+              </div>
             </div>
-          </div>
-        </Card>
-      )}
-
-      {/* Rotation strip */}
-      <SectionLabel>ROTATION</SectionLabel>
-      <div style={{ display: "flex", gap: 6, marginBottom: 16 }}>
-        {ROTATION.map((wt, i) => {
-          const w = WORKOUTS[wt]; const isNext = i === data.rotationIndex;
-          return (
-            <div key={wt} onClick={() => onStartWorkout(wt)} style={{ flex: 1, padding: "10px 4px", background: isNext ? `${w.color}1C` : T.card, border: `1px solid ${isNext ? w.color + "55" : T.border}`, borderRadius: 12, textAlign: "center", cursor: "pointer", WebkitTapHighlightColor: "transparent" }}>
-              <div style={{ fontSize: 17 }}>{w.icon}</div>
-              <div style={{ fontSize: 8, fontWeight: 800, color: isNext ? w.color : T.dim, marginTop: 3, letterSpacing: 1 }}>{w.label}</div>
-            </div>
-          );
-        })}
+          ))}
+        </div>
+        <div style={{ position: "absolute" }} />
       </div>
 
-      <Card style={{ background: "linear-gradient(135deg, #14142A, #101024)", borderColor: "#26264A", marginBottom: 8 }}>
-        <div style={{ fontSize: 9, letterSpacing: 3, color: "#7C7CF0", fontWeight: 800, marginBottom: 10 }}>THE TWO RULES</div>
-        <div style={{ display: "flex", gap: 9, marginBottom: 8 }}>
-          <div style={{ width: 20, height: 20, borderRadius: 10, background: T.red, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 800, flexShrink: 0, color: "#0A0A0A" }}>1</div>
-          <div style={{ fontSize: 11, color: "#C9C9E8", lineHeight: 1.45 }}>Log every set. Beat last session by 1 rep or 2.5 kg.</div>
+      {/* READINESS */}
+      <div style={{ ...tile({ marginBottom: 10, padding: 16 }), display: "flex", gap: 14, alignItems: "center", ...rise(block++) }}>
+        <Ring size={96} stroke={10} pct={r.score / 100} colors={BAND_GRAD[r.band]} id="readiness">
+          <div style={{ fontSize: 27, fontWeight: 800, color: T.text, lineHeight: 1, letterSpacing: -1 }}>{r.score}</div>
+          <div style={{ fontSize: 8, letterSpacing: 1.2, color: BAND_GRAD[r.band][0], fontWeight: 800, marginTop: 2 }}>{r.label.toUpperCase()}</div>
+        </Ring>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <Label>READINESS</Label>
+          <div style={{ marginTop: 6 }}>
+            {r.factors.slice(0, 2).map((f, i) => (
+              <div key={i} style={{ display: "flex", gap: 6, marginBottom: 5, alignItems: "flex-start" }}>
+                <div style={{ width: 5, height: 5, borderRadius: 3, background: f.good ? T.exercise : T.yellow, marginTop: 4.5, flexShrink: 0 }} />
+                <div style={{ fontSize: 10.5, color: T.sub, lineHeight: 1.4 }}>{f.text}</div>
+              </div>
+            ))}
+          </div>
+          {streak > 0 && <div style={{ fontSize: 10.5, color: T.dim, display: "flex", alignItems: "center", gap: 4, marginTop: 2 }}><Flame size={11} color={T.move} />{streak}-day streak</div>}
         </div>
-        <div style={{ display: "flex", gap: 9 }}>
-          <div style={{ width: 20, height: 20, borderRadius: 10, background: T.yellow, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 800, flexShrink: 0, color: "#0A0A0A" }}>2</div>
-          <div style={{ fontSize: 11, color: "#C9C9E8", lineHeight: 1.45 }}>4 protein meals daily. No junk between meals. Period.</div>
-        </div>
-      </Card>
+      </div>
+
+      {/* QUICK ROW: cardio / body / awards */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 12, ...rise(block++) }}>
+        {[
+          { icon: <Activity size={17} color={T.exercise} />, label: "Cardio", onClick: onLogCardio },
+          { icon: <Scale size={17} color={T.stand} />, label: "Body", onClick: onLogWeight },
+          { icon: <Trophy size={17} color={T.yellow} />, label: `Awards ${earned}/${aws.length}`, onClick: onOpenAwards },
+        ].map((b, i) => (
+          <div key={i} onClick={b.onClick} style={{ ...tile({ padding: "13px 8px", borderRadius: 16 }), display: "flex", flexDirection: "column", alignItems: "center", gap: 6, cursor: "pointer", WebkitTapHighlightColor: "transparent" }}>
+            {b.icon}
+            <div style={{ fontSize: 10.5, fontWeight: 700, color: T.sub }}>{b.label}</div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
 
-// ---------------- TRAIN TAB ----------------
+// ============ AWARDS SHEET ============
+
+function AwardsSheet({ open, onClose, data }) {
+  const aws = useMemo(() => achievements(data), [open, data.history.length, data.cardio.length]);
+  const earned = aws.filter((a) => a.earned).length;
+  return (
+    <Sheet open={open} onClose={onClose} title={`Awards · ${earned}/${aws.length}`}>
+      {aws.map((a, i) => (
+        <div key={a.id} style={{ ...tileSub({ borderRadius: 16 }), padding: "12px 14px", marginBottom: 8, display: "flex", alignItems: "center", gap: 12, opacity: a.earned ? 1 : 0.72, ...rise(i) }}>
+          <div style={{
+            width: 46, height: 46, borderRadius: 23, fontSize: 22, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+            background: a.earned ? "rgba(255,214,10,0.16)" : T.tileHi2,
+            border: a.earned ? `1.5px solid ${T.yellow}` : "1.5px solid transparent",
+            filter: a.earned ? "none" : "saturate(0.15)",
+          }}>{a.icon}</div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: a.earned ? T.text : T.sub }}>{a.name} {a.earned && "✓"}</div>
+            <div style={{ fontSize: 10.5, color: T.dim, marginTop: 1 }}>{a.desc}</div>
+            {!a.earned && (
+              <div style={{ marginTop: 6 }}>
+                <div style={{ height: 4, background: "#000", borderRadius: 2, overflow: "hidden" }}>
+                  <div style={{ height: "100%", width: `${Math.min(100, (a.cur / a.target) * 100)}%`, background: T.exercise, borderRadius: 2 }} />
+                </div>
+                <div style={{ fontSize: 9, color: T.faint, marginTop: 3 }}>{a.cur.toLocaleString()} / {a.target.toLocaleString()}</div>
+              </div>
+            )}
+          </div>
+        </div>
+      ))}
+    </Sheet>
+  );
+}
+
+// ============ TRAIN ============
 
 function TrainView({ data, onStartWorkout }) {
   return (
     <div style={{ padding: "0 14px" }}>
-      <div style={{ padding: "22px 2px 14px" }}>
-        <div style={{ fontSize: 25, fontWeight: 800, letterSpacing: -0.5 }}>Train</div>
-        <div style={{ fontSize: 11.5, color: T.mid, marginTop: 2 }}>Rotation: Push → Legs → Pull → Sculptor. Next one is highlighted.</div>
+      <div style={{ padding: "20px 2px 14px", ...rise(0) }}>
+        <div style={{ fontSize: 32, fontWeight: 800, letterSpacing: -0.9 }}>Train</div>
+        <div style={{ fontSize: 12, color: T.sub, marginTop: 2 }}>Push → Legs → Pull → Sculptor</div>
       </div>
       {ROTATION.map((wt, i) => {
         const w = WORKOUTS[wt];
         const isNext = i === data.rotationIndex;
         const lastOfType = [...data.history].reverse().find((s) => s.workoutType === wt);
         return (
-          <div key={wt} onClick={() => onStartWorkout(wt)} style={{ background: isNext ? `linear-gradient(135deg, ${w.color}1F, ${w.color}08)` : T.card, border: `1px solid ${isNext ? w.color + "55" : T.border}`, borderRadius: 16, padding: 16, marginBottom: 10, cursor: "pointer", position: "relative", overflow: "hidden", WebkitTapHighlightColor: "transparent" }}>
-            <div style={{ position: "absolute", top: -10, right: -6, fontSize: 58, opacity: 0.07 }}>{w.icon}</div>
+          <div key={wt} onClick={() => onStartWorkout(wt)} style={{
+            ...tile({ padding: 17, marginBottom: 10 }),
+            border: isNext ? `1.5px solid ${w.color}` : "1.5px solid transparent",
+            cursor: "pointer", position: "relative", overflow: "hidden", WebkitTapHighlightColor: "transparent", ...rise(i + 1),
+          }}>
+            <div style={{ position: "absolute", top: -12, right: -8, fontSize: 70, opacity: 0.10 }}>{w.icon}</div>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <div style={{ fontSize: 9, letterSpacing: 3, color: w.color, fontWeight: 800 }}>{w.label}</div>
-              {isNext && <div style={{ fontSize: 8, letterSpacing: 1, background: w.color, color: "#0A0A0A", padding: "2px 7px", borderRadius: 6, fontWeight: 800 }}>UP NEXT</div>}
+              <Label color={w.color}>{w.label}</Label>
+              {isNext && <div style={{ fontSize: 8, letterSpacing: 1, background: w.color, color: onColor(w.color), padding: "3px 8px", borderRadius: 7, fontWeight: 800 }}>UP NEXT</div>}
             </div>
-            <div style={{ fontSize: 18, fontWeight: 800, marginTop: 4 }}>{w.icon} {w.name}</div>
-            <div style={{ fontSize: 11, color: T.mid, marginTop: 3 }}>
+            <div style={{ fontSize: 19, fontWeight: 800, marginTop: 5 }}>{w.icon} {w.name}</div>
+            <div style={{ fontSize: 11, color: T.sub, marginTop: 3 }}>
               {w.exercises.length} exercises · {lastOfType ? `last done ${daysAgo(lastOfType.date)}` : "not yet done"}
             </div>
           </div>
         );
       })}
-      <div style={{ fontSize: 10.5, color: T.dim, lineHeight: 1.6, padding: "4px 4px 8px" }}>
-        Tapping any workout starts it and, on finish, the rotation advances from there. Cardio is logged from the Today tab and never advances the rotation.
+      <div style={{ ...tile({ marginTop: 4, marginBottom: 8 }), ...rise(5) }}>
+        <Label color={T.purple}>THE TWO RULES</Label>
+        <div style={{ display: "flex", gap: 9, margin: "10px 0 8px" }}>
+          <div style={{ width: 20, height: 20, borderRadius: 10, background: T.move, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 800, flexShrink: 0, color: "#fff" }}>1</div>
+          <div style={{ fontSize: 11.5, color: T.sub, lineHeight: 1.45 }}>Log every set. Beat last session by 1 rep or 2.5 kg.</div>
+        </div>
+        <div style={{ display: "flex", gap: 9 }}>
+          <div style={{ width: 20, height: 20, borderRadius: 10, background: T.yellow, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 800, flexShrink: 0, color: "#2B2103" }}>2</div>
+          <div style={{ fontSize: 11.5, color: T.sub, lineHeight: 1.45 }}>4 protein meals daily. No junk between meals. Period.</div>
+        </div>
+      </div>
+      <div style={{ fontSize: 10.5, color: T.dim, lineHeight: 1.6, padding: "4px 4px 8px", ...rise(6) }}>
+        Finishing any workout advances the rotation. Cardio never advances it.
       </div>
     </div>
   );
 }
 
-// ---------------- INSIGHTS TAB ----------------
+// ============ INSIGHTS ============
 
 function Heatmap({ cells }) {
-  const levels = ["#17171C", "#1E3A5F", "#14532D", "#15803D", "#22C55E"];
+  const levels = ["#151517", "rgba(0,217,245,0.40)", "rgba(146,232,42,0.30)", "rgba(146,232,42,0.60)", "#92E82A"];
   const weeks = [];
   for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7));
   return (
@@ -548,13 +705,15 @@ function Heatmap({ cells }) {
       {weeks.map((week, wi) => (
         <div key={wi} style={{ display: "flex", flexDirection: "column", gap: 3 }}>
           {week.map((c, di) => (
-            <div key={di} title={c.date} style={{ width: 13, height: 13, borderRadius: 3.5, background: levels[c.level] }} />
+            <div key={di} title={c.date} style={{ width: 13, height: 13, borderRadius: 4, background: levels[c.level] }} />
           ))}
         </div>
       ))}
     </div>
   );
 }
+
+const tooltipStyle = { background: "#1C1C1E", border: "1px solid rgba(255,255,255,0.10)", borderRadius: 12, fontSize: 11 };
 
 function InsightsView({ data }) {
   const report = useMemo(() => weeklyReport(data), [data.history.length, data.cardio.length]);
@@ -563,8 +722,8 @@ function InsightsView({ data }) {
   const cells = useMemo(() => heatmapData(data), [data.history.length, data.cardio.length]);
   const acwr = useMemo(() => calcACWR(data.history), [data.history.length]);
   const bw = useMemo(() => bodyweightTrend(data.bodyWeight), [data.bodyWeight.length]);
+  const waist = useMemo(() => waistTrend(data.bodyWeight), [data.bodyWeight.length]);
 
-  // 8-week volume trend
   const volTrend = useMemo(() => {
     const out = [];
     for (let w = 7; w >= 0; w--) {
@@ -576,7 +735,6 @@ function InsightsView({ data }) {
     return out;
   }, [data.history.length]);
 
-  // Big-3 e1RM series
   const e1rmSeries = useMemo(() => {
     const byDate = {};
     for (const id of BIG_THREE) {
@@ -595,173 +753,185 @@ function InsightsView({ data }) {
 
   const totalByType = balance.byType;
   const maxType = Math.max(1, ...Object.values(totalByType));
+  let block = 0;
 
   return (
     <div style={{ padding: "0 14px" }}>
-      <div style={{ padding: "22px 2px 14px" }}>
-        <div style={{ fontSize: 25, fontWeight: 800, letterSpacing: -0.5 }}>Insights</div>
-        <div style={{ fontSize: 11.5, color: T.mid, marginTop: 2 }}>What the data says. No feelings, just numbers.</div>
+      <div style={{ padding: "20px 2px 14px", ...rise(block++) }}>
+        <div style={{ fontSize: 32, fontWeight: 800, letterSpacing: -0.9 }}>Insights</div>
+        <div style={{ fontSize: 12, color: T.sub, marginTop: 2 }}>What the data says. No feelings, just numbers.</div>
       </div>
 
-      {/* Weekly report */}
-      <Card style={{ marginBottom: 12 }}>
-        <SectionLabel>THIS WEEK VS LAST</SectionLabel>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
+      <div style={{ ...tile({ marginBottom: 10 }), ...rise(block++) }}>
+        <Label>THIS WEEK VS LAST</Label>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginTop: 10 }}>
           <div>
-            <div style={{ fontSize: 22, fontWeight: 800, color: T.text }}>{report.sessions}<span style={{ fontSize: 12, color: T.dim }}> vs {report.lastSessions}</span></div>
-            <div style={{ fontSize: 8.5, color: T.dim, letterSpacing: 1, marginTop: 2 }}>SESSIONS</div>
+            <div style={{ fontSize: 24, fontWeight: 800 }}>{report.sessions}<span style={{ fontSize: 12, color: T.dim }}> vs {report.lastSessions}</span></div>
+            <div style={{ fontSize: 9, color: T.dim, letterSpacing: 0.8, marginTop: 2, fontWeight: 700 }}>SESSIONS</div>
           </div>
           <div>
-            <div style={{ fontSize: 22, fontWeight: 800, color: report.volDelta > 0 ? T.green : report.volDelta < 0 ? T.red : T.text }}>
+            <div style={{ fontSize: 24, fontWeight: 800, color: report.volDelta > 0 ? T.exercise : report.volDelta < 0 ? T.move : T.text }}>
               {(report.volume / 1000).toFixed(1)}k
               {report.volDelta != null && <span style={{ fontSize: 11 }}> {report.volDelta > 0 ? "▲" : report.volDelta < 0 ? "▼" : ""}{Math.abs(report.volDelta)}%</span>}
             </div>
-            <div style={{ fontSize: 8.5, color: T.dim, letterSpacing: 1, marginTop: 2 }}>VOLUME KG</div>
+            <div style={{ fontSize: 9, color: T.dim, letterSpacing: 0.8, marginTop: 2, fontWeight: 700 }}>VOLUME KG</div>
           </div>
           <div>
-            <div style={{ fontSize: 22, fontWeight: 800, color: report.prCount > 0 ? T.green : T.text }}>{report.prCount} <span style={{ fontSize: 14 }}>🏆</span></div>
-            <div style={{ fontSize: 8.5, color: T.dim, letterSpacing: 1, marginTop: 2 }}>PRs</div>
+            <div style={{ fontSize: 24, fontWeight: 800, color: report.prCount > 0 ? T.exercise : T.text }}>{report.prCount} <span style={{ fontSize: 14 }}>🏆</span></div>
+            <div style={{ fontSize: 9, color: T.dim, letterSpacing: 0.8, marginTop: 2, fontWeight: 700 }}>PRs</div>
           </div>
         </div>
         {acwr.ratio != null && (
-          <div style={{ marginTop: 12, padding: "9px 11px", background: T.cardHi, borderRadius: 10, fontSize: 10.5, color: T.mid, lineHeight: 1.5 }}>
-            <b style={{ color: acwr.ratio > 1.5 ? T.red : acwr.ratio > 1.3 ? T.yellow : acwr.ratio < 0.8 ? T.yellow : T.green }}>ACWR {acwr.ratio.toFixed(2)}</b>
+          <div style={{ marginTop: 12, ...tileSub({ padding: "9px 11px", borderRadius: 12 }), fontSize: 10.5, color: T.sub, lineHeight: 1.5 }}>
+            <b style={{ color: acwr.ratio > 1.5 ? T.move : acwr.ratio > 1.3 ? T.yellow : acwr.ratio < 0.8 ? T.yellow : T.exercise }}>ACWR {acwr.ratio.toFixed(2)}</b>
             {" — "}{acwr.ratio > 1.5 ? "load spiking, injury-risk zone. Ease off." : acwr.ratio > 1.3 ? "ramping fast. Watch recovery." : acwr.ratio < 0.8 ? "below baseline. Volume slipping." : "in the ideal 0.8–1.3 progression zone."}
           </div>
         )}
-      </Card>
+      </div>
 
-      {/* Consistency heatmap */}
-      <Card style={{ marginBottom: 12 }}>
-        <SectionLabel>LAST 12 WEEKS</SectionLabel>
-        <Heatmap cells={cells} />
+      <div style={{ ...tile({ marginBottom: 10 }), ...rise(block++) }}>
+        <Label>LAST 12 WEEKS</Label>
+        <div style={{ marginTop: 10 }}><Heatmap cells={cells} /></div>
         <div style={{ display: "flex", gap: 10, marginTop: 8, fontSize: 9, color: T.dim, alignItems: "center" }}>
           <span>Less</span>
-          {["#17171C", "#1E3A5F", "#14532D", "#15803D", "#22C55E"].map((c, i) => <div key={i} style={{ width: 10, height: 10, borderRadius: 3, background: c }} />)}
+          {["#151517", "rgba(0,217,245,0.40)", "rgba(146,232,42,0.30)", "rgba(146,232,42,0.60)", "#92E82A"].map((c, i) => <div key={i} style={{ width: 10, height: 10, borderRadius: 3, background: c }} />)}
           <span>More</span>
           <span style={{ marginLeft: "auto" }}>blue = cardio only</span>
         </div>
-      </Card>
+      </div>
 
-      {/* Volume trend */}
-      <Card style={{ marginBottom: 12 }}>
-        <SectionLabel>VOLUME TREND (8 WEEKS)</SectionLabel>
-        <div style={{ width: "100%", height: 120 }}>
+      <div style={{ ...tile({ marginBottom: 10 }), ...rise(block++) }}>
+        <Label>VOLUME TREND · 8 WEEKS</Label>
+        <div style={{ width: "100%", height: 120, marginTop: 8 }}>
           <ResponsiveContainer>
             <BarChart data={volTrend} margin={{ top: 4, right: 4, bottom: 0, left: -26 }}>
-              <XAxis dataKey="week" stroke={T.dim} fontSize={9} tick={{ fill: T.dim }} axisLine={false} tickLine={false} />
-              <YAxis stroke={T.dim} fontSize={9} tick={{ fill: T.dim }} axisLine={false} tickLine={false} />
-              <Tooltip contentStyle={{ background: T.bg, border: `1px solid ${T.border2}`, borderRadius: 10, fontSize: 11 }} labelStyle={{ color: T.mid }} cursor={{ fill: "rgba(255,255,255,0.04)" }} />
-              <Bar dataKey="volume" radius={[5, 5, 0, 0]} fill={T.red} />
+              <XAxis dataKey="week" stroke="none" fontSize={9} tick={{ fill: T.dim }} axisLine={false} tickLine={false} />
+              <YAxis stroke="none" fontSize={9} tick={{ fill: T.dim }} axisLine={false} tickLine={false} />
+              <Tooltip contentStyle={tooltipStyle} labelStyle={{ color: T.sub }} cursor={{ fill: "rgba(255,255,255,0.05)" }} />
+              <Bar dataKey="volume" radius={[6, 6, 0, 0]} fill={T.move} />
             </BarChart>
           </ResponsiveContainer>
         </div>
-      </Card>
+      </div>
 
-      {/* Big 3 strength curve */}
-      <Card style={{ marginBottom: 12 }}>
-        <SectionLabel>BIG-3 STRENGTH (EST. 1RM)</SectionLabel>
+      <div style={{ ...tile({ marginBottom: 10 }), ...rise(block++) }}>
+        <Label>BIG-3 STRENGTH · EST. 1RM</Label>
         {hasE1RM ? (
           <>
-            <div style={{ width: "100%", height: 150 }}>
+            <div style={{ width: "100%", height: 150, marginTop: 8 }}>
               <ResponsiveContainer>
                 <LineChart data={e1rmSeries} margin={{ top: 4, right: 4, bottom: 0, left: -26 }}>
-                  <XAxis dataKey="date" stroke={T.dim} fontSize={9} tick={{ fill: T.dim }} axisLine={false} tickLine={false} />
-                  <YAxis stroke={T.dim} fontSize={9} tick={{ fill: T.dim }} axisLine={false} tickLine={false} />
-                  <Tooltip contentStyle={{ background: T.bg, border: `1px solid ${T.border2}`, borderRadius: 10, fontSize: 11 }} labelStyle={{ color: T.mid }} />
-                  <Line type="monotone" dataKey="barbell_bench_press" name="Bench" stroke={T.red} strokeWidth={2.5} dot={{ r: 3 }} connectNulls />
-                  <Line type="monotone" dataKey="barbell_back_squat" name="Squat" stroke="#FFA028" strokeWidth={2.5} dot={{ r: 3 }} connectNulls />
-                  <Line type="monotone" dataKey="trap_bar_deadlift" name="Deadlift" stroke={T.green} strokeWidth={2.5} dot={{ r: 3 }} connectNulls />
+                  <XAxis dataKey="date" stroke="none" fontSize={9} tick={{ fill: T.dim }} axisLine={false} tickLine={false} />
+                  <YAxis stroke="none" fontSize={9} tick={{ fill: T.dim }} axisLine={false} tickLine={false} />
+                  <Tooltip contentStyle={tooltipStyle} labelStyle={{ color: T.sub }} />
+                  <Line type="monotone" dataKey="barbell_bench_press" name="Bench" stroke={T.move} strokeWidth={2.5} dot={{ r: 3 }} connectNulls />
+                  <Line type="monotone" dataKey="barbell_back_squat" name="Squat" stroke={T.orange} strokeWidth={2.5} dot={{ r: 3 }} connectNulls />
+                  <Line type="monotone" dataKey="trap_bar_deadlift" name="Deadlift" stroke={T.exercise} strokeWidth={2.5} dot={{ r: 3 }} connectNulls />
                 </LineChart>
               </ResponsiveContainer>
             </div>
             <div style={{ display: "flex", gap: 12, marginTop: 6, fontSize: 9.5, color: T.dim }}>
-              <span><span style={{ color: T.red }}>●</span> Bench</span>
-              <span><span style={{ color: "#FFA028" }}>●</span> Squat</span>
-              <span><span style={{ color: T.green }}>●</span> Deadlift</span>
+              <span><span style={{ color: T.move }}>●</span> Bench</span>
+              <span><span style={{ color: T.orange }}>●</span> Squat</span>
+              <span><span style={{ color: T.exercise }}>●</span> Deadlift</span>
             </div>
           </>
         ) : (
-          <div style={{ padding: "16px 4px", fontSize: 11.5, color: T.dim, lineHeight: 1.6 }}>
-            Log 2+ sessions of Bench, Squat, or Deadlift to unlock your strength curve. Estimated 1RM is computed from your best set (Epley formula) — the truest measure of whether you're actually getting stronger.
+          <div style={{ padding: "14px 4px 4px", fontSize: 11.5, color: T.dim, lineHeight: 1.6 }}>
+            Log 2+ sessions of Bench, Squat, or Deadlift to unlock your strength curve — estimated 1RM from your best set.
           </div>
         )}
-      </Card>
+      </div>
 
-      {/* Muscle balance */}
-      <Card style={{ marginBottom: 12 }}>
-        <SectionLabel>MUSCLE BALANCE (28 DAYS)</SectionLabel>
-        {Object.entries(totalByType).map(([type, vol]) => {
-          const w = WORKOUTS[type];
-          return (
-            <div key={type} style={{ marginBottom: 8 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, marginBottom: 3 }}>
-                <span style={{ color: T.mid, fontWeight: 700 }}>{w.icon} {w.label}</span>
-                <span style={{ color: T.dim }}>{Math.round(vol).toLocaleString()} kg</span>
+      <div style={{ ...tile({ marginBottom: 10 }), ...rise(block++) }}>
+        <Label>MUSCLE BALANCE · 28 DAYS</Label>
+        <div style={{ marginTop: 10 }}>
+          {Object.entries(totalByType).map(([type, vol]) => {
+            const w = WORKOUTS[type];
+            return (
+              <div key={type} style={{ marginBottom: 8 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, marginBottom: 3 }}>
+                  <span style={{ color: T.sub, fontWeight: 700 }}>{w.icon} {w.label}</span>
+                  <span style={{ color: T.dim }}>{Math.round(vol).toLocaleString()} kg</span>
+                </div>
+                <div style={{ height: 8, background: T.tileHi, borderRadius: 4, overflow: "hidden" }}>
+                  <div style={{ height: "100%", width: `${(vol / maxType) * 100}%`, background: w.color, borderRadius: 4, transition: "width 0.4s" }} />
+                </div>
               </div>
-              <div style={{ height: 7, background: T.cardHi, borderRadius: 4, overflow: "hidden" }}>
-                <div style={{ height: "100%", width: `${(vol / maxType) * 100}%`, background: w.color, borderRadius: 4, transition: "width 0.4s" }} />
-              </div>
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
         {balance.flag && (
-          <div style={{ marginTop: 10, padding: "9px 11px", background: "rgba(251,191,36,0.08)", border: "1px solid rgba(251,191,36,0.25)", borderRadius: 10, fontSize: 10.5, color: "#FDE68A", lineHeight: 1.5 }}>
+          <div style={{ marginTop: 10, padding: "9px 11px", background: "rgba(255,214,10,0.10)", borderRadius: 12, fontSize: 10.5, color: "#FFE985", lineHeight: 1.5 }}>
             ⚠️ {balance.flag}
           </div>
         )}
-      </Card>
+      </div>
 
-      {/* Stalled lifts */}
       {stalls.length > 0 && (
-        <Card style={{ marginBottom: 12, borderColor: "rgba(250,75,75,0.3)" }}>
-          <SectionLabel>STALLED LIFTS — ACTION NEEDED</SectionLabel>
-          {stalls.map((s) => (
-            <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: `1px solid ${T.border}` }}>
-              <AlertCircle size={15} color={T.red} style={{ flexShrink: 0 }} />
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: T.text }}>{s.name}</div>
-                <div style={{ fontSize: 10, color: T.mid, marginTop: 1 }}>{s.sessions} sessions stuck at {s.weight}kg — fight for +1 rep or deload 10%</div>
+        <div style={{ ...tile({ marginBottom: 10 }), ...rise(block++) }}>
+          <Label color={T.move}>STALLED LIFTS — ACTION NEEDED</Label>
+          <div style={{ marginTop: 6 }}>
+            {stalls.map((s) => (
+              <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: `1px solid ${T.hairline}` }}>
+                <AlertCircle size={15} color={T.move} style={{ flexShrink: 0 }} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700 }}>{s.name}</div>
+                  <div style={{ fontSize: 10, color: T.sub, marginTop: 1 }}>{s.sessions} sessions stuck at {s.weight}kg — fight for +1 rep or deload 10%</div>
+                </div>
               </div>
-            </div>
-          ))}
-        </Card>
+            ))}
+          </div>
+        </div>
       )}
 
-      {/* Bodyweight */}
-      <Card style={{ marginBottom: 8 }}>
-        <SectionLabel>BODYWEIGHT → {BODYWEIGHT_TARGET} KG</SectionLabel>
+      <div style={{ ...tile({ marginBottom: 8 }), ...rise(block++) }}>
+        <Label>BODYWEIGHT → {BODYWEIGHT_TARGET} KG</Label>
         {bw && bw.series.length >= 2 ? (
           <>
-            <div style={{ width: "100%", height: 140 }}>
+            {bw.ratePerWeek != null && (
+              <div style={{ fontSize: 11.5, color: T.sub, margin: "8px 0 2px", lineHeight: 1.5 }}>
+                {bw.ratePerWeek < -0.05
+                  ? <>Losing <b style={{ color: T.exercise }}>{Math.abs(bw.ratePerWeek)} kg/week</b>{bw.etaWeeks ? <> — on track for <b style={{ color: T.text }}>{BODYWEIGHT_TARGET} kg in ~{bw.etaWeeks} wks</b></> : null}</>
+                  : bw.ratePerWeek > 0.05 ? <>Trending <b style={{ color: T.yellow }}>up {bw.ratePerWeek} kg/wk</b> — audit the snacks</>
+                  : <>Flat — tighten the deficit</>}
+              </div>
+            )}
+            <div style={{ width: "100%", height: 140, marginTop: 6 }}>
               <ResponsiveContainer>
                 <LineChart data={bw.series.map((p) => ({ ...p, d: fmtDate(p.date) }))} margin={{ top: 4, right: 4, bottom: 0, left: -22 }}>
-                  <XAxis dataKey="d" stroke={T.dim} fontSize={9} tick={{ fill: T.dim }} axisLine={false} tickLine={false} />
-                  <YAxis domain={["dataMin - 1", "dataMax + 1"]} stroke={T.dim} fontSize={9} tick={{ fill: T.dim }} axisLine={false} tickLine={false} />
-                  <Tooltip contentStyle={{ background: T.bg, border: `1px solid ${T.border2}`, borderRadius: 10, fontSize: 11 }} labelStyle={{ color: T.mid }} />
-                  <ReferenceLine y={BODYWEIGHT_TARGET} stroke={T.green} strokeDasharray="5 4" />
+                  <XAxis dataKey="d" stroke="none" fontSize={9} tick={{ fill: T.dim }} axisLine={false} tickLine={false} />
+                  <YAxis domain={["dataMin - 1", "dataMax + 1"]} stroke="none" fontSize={9} tick={{ fill: T.dim }} axisLine={false} tickLine={false} />
+                  <Tooltip contentStyle={tooltipStyle} labelStyle={{ color: T.sub }} />
+                  <ReferenceLine y={BODYWEIGHT_TARGET} stroke={T.exercise} strokeDasharray="5 4" />
                   <Line type="monotone" dataKey="kg" stroke={T.faint} strokeWidth={1.5} dot={{ r: 2, fill: T.faint }} name="Daily" />
-                  <Line type="monotone" dataKey="ma" stroke={T.violet} strokeWidth={2.5} dot={false} name="7-day avg" />
+                  <Line type="monotone" dataKey="ma" stroke={T.stand} strokeWidth={2.5} dot={false} name="7-day avg" />
                 </LineChart>
               </ResponsiveContainer>
             </div>
             <div style={{ fontSize: 10, color: T.dim, marginTop: 4 }}>
-              <span style={{ color: T.violet }}>—</span> 7-day average (trust this) · <span style={{ color: T.faint }}>—</span> daily (noise) · <span style={{ color: T.green }}>- -</span> target
+              <span style={{ color: T.stand }}>—</span> 7-day avg (trust this) · <span style={{ color: T.faint }}>—</span> daily · <span style={{ color: T.exercise }}>- -</span> target
             </div>
+            {waist && (
+              <div style={{ marginTop: 10, ...tileSub({ padding: "9px 12px", borderRadius: 12 }), fontSize: 11, color: T.sub }}>
+                📏 Waist <b style={{ color: T.text }}>{waist.latest} cm</b>
+                {waist.count > 1 && <> · <b style={{ color: waist.delta <= 0 ? T.exercise : T.yellow }}>{waist.delta > 0 ? "+" : ""}{waist.delta} cm</b> / 30d — lower-ab fat leaves here first</>}
+              </div>
+            )}
           </>
         ) : (
-          <div style={{ padding: "14px 4px", fontSize: 11.5, color: T.dim, lineHeight: 1.6 }}>
-            Log your weight from the Today tab (2+ entries needed). You'll get a 7-day trend line and a projected date to hit {BODYWEIGHT_TARGET} kg — that projection is a stronger motivator than any mirror check.
+          <div style={{ padding: "12px 4px 4px", fontSize: 11.5, color: T.dim, lineHeight: 1.6 }}>
+            Log weight (+ optional waist) from Today for the trend and a projected date to hit {BODYWEIGHT_TARGET} kg.
           </div>
         )}
-      </Card>
+      </div>
     </div>
   );
 }
 
-// ---------------- HISTORY TAB ----------------
+// ============ HISTORY ============
 
-function HistoryView({ data, onSelectExercise }) {
+function HistoryView({ data, onSelectExercise, onSelectSession }) {
   const allExercises = useMemo(() => {
     const out = [];
     for (const ex of Object.values(CATALOG)) {
@@ -776,24 +946,25 @@ function HistoryView({ data, onSelectExercise }) {
 
   return (
     <div style={{ padding: "0 14px" }}>
-      <div style={{ padding: "22px 2px 14px" }}>
-        <div style={{ fontSize: 25, fontWeight: 800, letterSpacing: -0.5 }}>History</div>
-        <div style={{ fontSize: 11.5, color: T.mid, marginTop: 2 }}>{data.history.length} workouts · {data.cardio.length} cardio sessions logged</div>
+      <div style={{ padding: "20px 2px 14px", ...rise(0) }}>
+        <div style={{ fontSize: 32, fontWeight: 800, letterSpacing: -0.9 }}>History</div>
+        <div style={{ fontSize: 12, color: T.sub, marginTop: 2 }}>{data.history.length} workouts · {data.cardio.length} cardio</div>
       </div>
 
-      <SectionLabel>SESSIONS</SectionLabel>
+      <SectionTitle style={rise(1)}>Sessions</SectionTitle>
       {recent.length === 0 ? (
-        <Card style={{ textAlign: "center", color: T.dim, fontSize: 12, marginBottom: 16 }}>No workouts yet. Everything you log lives here forever.</Card>
+        <div style={{ ...tile({ textAlign: "center", marginBottom: 16 }), color: T.dim, fontSize: 12, ...rise(2) }}>No workouts yet. Everything you log lives here forever.</div>
       ) : recent.map((s, i) => {
         const w = WORKOUTS[s.workoutType]; if (!w) return null;
         const sets = sessionSets(s), vol = Math.round(sessionVolume(s));
         const dur = s.startedAt && s.completedAt ? Math.round((new Date(s.completedAt) - new Date(s.startedAt)) / 60000) : null;
         return (
-          <div key={s.id || i} style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 12, padding: "11px 13px", marginBottom: 6, display: "flex", alignItems: "center", gap: 10 }}>
+          <div key={s.id || i} onClick={() => onSelectSession(s)} style={{ ...tile({ padding: "11px 13px", borderRadius: 16, marginBottom: 6 }), display: "flex", alignItems: "center", gap: 10, cursor: "pointer", WebkitTapHighlightColor: "transparent", ...rise(Math.min(i + 2, 9)) }}>
             <div style={{ fontSize: 19 }}>{w.icon}</div>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 12.5, fontWeight: 700, display: "flex", alignItems: "center", gap: 6 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, display: "flex", alignItems: "center", gap: 6 }}>
                 {w.name}
+                {s.feel && <span style={{ fontSize: 12 }}>{FEEL[s.feel]}</span>}
                 {s.prs?.length > 0 && <span style={{ fontSize: 10 }}>🏆×{s.prs.length}</span>}
               </div>
               <div style={{ fontSize: 10, color: T.dim, marginTop: 2 }}>
@@ -801,39 +972,40 @@ function HistoryView({ data, onSelectExercise }) {
               </div>
             </div>
             <div style={{ width: 4, height: 26, background: w.color, borderRadius: 2, flexShrink: 0 }} />
+            <ChevronRight size={13} color={T.faint} style={{ flexShrink: 0 }} />
           </div>
         );
       })}
 
       {recentCardio.length > 0 && (
         <>
-          <SectionLabel>CARDIO</SectionLabel>
+          <SectionTitle>Cardio</SectionTitle>
           {recentCardio.map((c, i) => {
             const ct = CARDIO_TYPES.find((x) => x.id === c.type);
             return (
-              <div key={i} style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 12, padding: "11px 13px", marginBottom: 6, display: "flex", alignItems: "center", gap: 10 }}>
+              <div key={i} style={{ ...tile({ padding: "11px 13px", borderRadius: 16, marginBottom: 6 }), display: "flex", alignItems: "center", gap: 10 }}>
                 <div style={{ fontSize: 17 }}>{ct?.icon || "🏃"}</div>
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 12.5, fontWeight: 700 }}>{ct?.name || c.type}</div>
+                  <div style={{ fontSize: 13, fontWeight: 700 }}>{ct?.name || c.type}</div>
                   <div style={{ fontSize: 10, color: T.dim, marginTop: 2 }}>{fmtDate(c.date)} · {c.minutes} min</div>
                 </div>
-                <div style={{ width: 4, height: 26, background: T.blue, borderRadius: 2 }} />
+                <div style={{ width: 4, height: 26, background: T.exercise, borderRadius: 2 }} />
               </div>
             );
           })}
         </>
       )}
 
-      <SectionLabel>EXERCISE TRENDS</SectionLabel>
+      <SectionTitle>Exercises</SectionTitle>
       {allExercises.length === 0 ? (
-        <Card style={{ textAlign: "center", color: T.dim, fontSize: 12 }}>Complete a workout to unlock per-exercise trends.</Card>
+        <div style={{ ...tile({ textAlign: "center" }), color: T.dim, fontSize: 12 }}>Complete a workout to unlock per-exercise trends.</div>
       ) : allExercises.map((ex) => {
         const lw = ex.lastSession.sets.filter((s) => s.weight)[0]?.weight;
         return (
-          <div key={ex.id} onClick={() => onSelectExercise(ex.id)} style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 12, padding: "11px 13px", marginBottom: 6, cursor: "pointer", display: "flex", alignItems: "center", gap: 10, WebkitTapHighlightColor: "transparent" }}>
+          <div key={ex.id} onClick={() => onSelectExercise(ex.id)} style={{ ...tile({ padding: "11px 13px", borderRadius: 16, marginBottom: 6 }), cursor: "pointer", display: "flex", alignItems: "center", gap: 10, WebkitTapHighlightColor: "transparent" }}>
             <div style={{ width: 3, height: 26, background: ex.color, borderRadius: 2, flexShrink: 0 }} />
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 12.5, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ex.name}</div>
+              <div style={{ fontSize: 13, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ex.name}</div>
               <div style={{ fontSize: 10, color: T.dim, marginTop: 2 }}>{lw ? `Last ${lw}kg · ` : ""}{daysAgo(ex.lastSession.date)}</div>
             </div>
             <ChevronRight size={14} color={T.faint} style={{ flexShrink: 0 }} />
@@ -845,7 +1017,55 @@ function HistoryView({ data, onSelectExercise }) {
   );
 }
 
-// ---------------- EXERCISE DETAIL ----------------
+// ============ SESSION SHEET ============
+
+function SessionSheet({ session, onClose }) {
+  if (!session) return null;
+  const w = WORKOUTS[session.workoutType];
+  const vol = Math.round(sessionVolume(session));
+  const sets = sessionSets(session);
+  const dur = session.startedAt && session.completedAt ? Math.round((new Date(session.completedAt) - new Date(session.startedAt)) / 60000) : null;
+  return (
+    <Sheet open={!!session} onClose={onClose} title={`${w?.icon || ""} ${w?.name || "Session"}`}>
+      <div style={{ fontSize: 11, color: T.dim, marginTop: -10, marginBottom: 14 }}>{fmtDate(session.date)} {session.feel && `· felt ${session.feel} ${FEEL[session.feel]}`}</div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 7, marginBottom: 14 }}>
+        {[["SETS", sets], ["VOLUME", `${vol}kg`], ["TIME", dur && dur < 180 ? `${dur}min` : "—"]].map(([l, v]) => (
+          <div key={l} style={{ ...tileSub({ borderRadius: 14 }), padding: "10px 10px", textAlign: "center" }}>
+            <div style={{ fontSize: 16, fontWeight: 800, color: w?.color || T.text }}>{v}</div>
+            <div style={{ fontSize: 8, letterSpacing: 1.4, color: T.dim, marginTop: 2, fontWeight: 700 }}>{l}</div>
+          </div>
+        ))}
+      </div>
+      {session.prs?.length > 0 && (
+        <div style={{ ...tileSub({ borderRadius: 14 }), background: "rgba(146,232,42,0.10)", padding: "10px 12px", marginBottom: 14, fontSize: 11.5, color: "#DBF7B8" }}>
+          🏆 {session.prs.map((p) => `${p.name} ${p.weight}kg`).join(" · ")}
+        </div>
+      )}
+      {session.note && (
+        <div style={{ ...tileSub({ borderRadius: 14 }), padding: "10px 12px", marginBottom: 14, fontSize: 11.5, color: T.sub, fontStyle: "italic" }}>"{session.note}"</div>
+      )}
+      {Object.entries(session.exercises || {}).map(([exId, exData]) => {
+        const ex = CATALOG[exId];
+        const done = (exData.sets || []).filter((s) => s.reps);
+        if (!done.length) return null;
+        return (
+          <div key={exId} style={{ marginBottom: 12 }}>
+            <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 6, color: T.text }}>{ex?.name || exId}</div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+              {done.map((x, j) => (
+                <div key={j} style={{ padding: "4px 9px", background: "#000", borderRadius: 8, fontSize: 10.5, color: T.sub }}>
+                  {x.weight ? `${x.weight}×` : ""}{x.reps}
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })}
+    </Sheet>
+  );
+}
+
+// ============ EXERCISE DETAIL ============
 
 function ExerciseDetailView({ exerciseId, history, onBack }) {
   const ex = CATALOG[exerciseId];
@@ -862,12 +1082,12 @@ function ExerciseDetailView({ exerciseId, history, onBack }) {
 
   const allSets = past.flatMap((s) => s.sets).filter((s) => s.reps);
   const pr = allSets.length ? Math.max(...allSets.map((s) => parseFloat(s.weight) || 0)) : 0;
-  const bestE = allSets.length ? Math.max(...chartData.map((c) => c.e1rm || 0)) : 0;
+  const bestE = chartData.length ? Math.max(...chartData.map((c) => c.e1rm || 0)) : 0;
 
   return (
-    <div style={{ minHeight: "100vh", background: T.bg, color: T.text, paddingBottom: 40 }}>
-      <div style={{ padding: "12px 14px", paddingTop: "calc(12px + env(safe-area-inset-top))", borderBottom: `1px solid ${ex.color}26`, display: "flex", alignItems: "center", gap: 8, position: "sticky", top: 0, background: "rgba(9,9,11,0.92)", backdropFilter: "blur(12px)", zIndex: 10 }}>
-        <button onClick={onBack} style={{ background: "none", border: "none", color: T.mid, cursor: "pointer", padding: 4, display: "flex" }}><ArrowLeft size={20} /></button>
+    <div style={{ minHeight: "100vh", color: T.text, paddingBottom: 40 }}>
+      <div style={{ padding: "12px 14px", paddingTop: "calc(12px + env(safe-area-inset-top))", display: "flex", alignItems: "center", gap: 8, position: "sticky", top: 0, background: "rgba(0,0,0,0.85)", backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)", zIndex: 10 }}>
+        <button onClick={onBack} style={{ background: "none", border: "none", color: T.sub, cursor: "pointer", padding: 4, display: "flex" }}><ArrowLeft size={20} /></button>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 9, letterSpacing: 3, color: ex.color, fontWeight: 800 }}>{ex.label}{ex.isAlt ? " · ALTERNATE" : ""}</div>
           <div style={{ fontSize: 15, fontWeight: 800, marginTop: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ex.name}</div>
@@ -875,45 +1095,45 @@ function ExerciseDetailView({ exerciseId, history, onBack }) {
       </div>
 
       <div style={{ padding: 14 }}>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 7, marginBottom: 12 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 7, marginBottom: 12, ...rise(0) }}>
           {[["BEST WT", `${pr}`, "kg"], ["EST 1RM", `${Math.round(bestE)}`, "kg"], ["SESSIONS", `${past.length}`, ""]].map(([l, v, u]) => (
-            <Card key={l} style={{ padding: "11px 9px" }}>
-              <div style={{ fontSize: 8, letterSpacing: 1.5, color: T.dim }}>{l}</div>
-              <div style={{ fontSize: 18, fontWeight: 800, color: ex.color, marginTop: 3 }}>{v}<span style={{ fontSize: 10, color: T.dim }}>{u}</span></div>
-            </Card>
+            <div key={l} style={tile({ padding: "11px 9px", borderRadius: 16 })}>
+              <div style={{ fontSize: 8, letterSpacing: 1.5, color: T.dim, fontWeight: 700 }}>{l}</div>
+              <div style={{ fontSize: 20, fontWeight: 800, color: ex.color, marginTop: 3 }}>{v}<span style={{ fontSize: 10, color: T.dim }}>{u}</span></div>
+            </div>
           ))}
         </div>
 
         {chartData.length > 1 && (
-          <Card style={{ marginBottom: 12 }}>
-            <SectionLabel>PROGRESSION</SectionLabel>
-            <div style={{ width: "100%", height: 150 }}>
+          <div style={{ ...tile({ marginBottom: 12 }), ...rise(1) }}>
+            <Label>PROGRESSION</Label>
+            <div style={{ width: "100%", height: 150, marginTop: 8 }}>
               <ResponsiveContainer>
                 <LineChart data={chartData} margin={{ top: 4, right: 4, bottom: 0, left: -26 }}>
-                  <XAxis dataKey="date" stroke={T.dim} fontSize={9} tick={{ fill: T.dim }} axisLine={false} tickLine={false} />
-                  <YAxis stroke={T.dim} fontSize={9} tick={{ fill: T.dim }} axisLine={false} tickLine={false} />
-                  <Tooltip contentStyle={{ background: T.bg, border: `1px solid ${T.border2}`, borderRadius: 10, fontSize: 11 }} labelStyle={{ color: T.mid }} />
+                  <XAxis dataKey="date" stroke="none" fontSize={9} tick={{ fill: T.dim }} axisLine={false} tickLine={false} />
+                  <YAxis stroke="none" fontSize={9} tick={{ fill: T.dim }} axisLine={false} tickLine={false} />
+                  <Tooltip contentStyle={tooltipStyle} labelStyle={{ color: T.sub }} />
                   <Line type="monotone" dataKey="weight" name="Top set" stroke={ex.color} strokeWidth={2.5} dot={{ fill: ex.color, r: 3 }} />
-                  <Line type="monotone" dataKey="e1rm" name="Est 1RM" stroke={T.dim} strokeWidth={1.5} strokeDasharray="4 3" dot={false} />
+                  <Line type="monotone" dataKey="e1rm" name="Est 1RM" stroke={T.faint} strokeWidth={1.5} strokeDasharray="4 3" dot={false} />
                 </LineChart>
               </ResponsiveContainer>
             </div>
             <div style={{ fontSize: 9.5, color: T.dim, marginTop: 4 }}><span style={{ color: ex.color }}>—</span> top-set weight · <span>- -</span> estimated 1RM</div>
-          </Card>
+          </div>
         )}
 
-        <SectionLabel>ALL SESSIONS</SectionLabel>
+        <SectionTitle>All sessions</SectionTitle>
         {past.length === 0 ? (
-          <Card style={{ textAlign: "center", color: T.dim, fontSize: 12 }}>No data yet for this movement.</Card>
+          <div style={{ ...tile({ textAlign: "center" }), color: T.dim, fontSize: 12 }}>No data yet for this movement.</div>
         ) : past.slice().reverse().map((s, i) => (
-          <div key={i} style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 12, padding: "10px 12px", marginBottom: 6 }}>
+          <div key={i} style={{ ...tile({ padding: "10px 12px", borderRadius: 16, marginBottom: 6 }), ...rise(Math.min(i + 2, 9)) }}>
             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: T.mid }}>{fmtDate(s.date)}</div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: T.sub }}>{fmtDate(s.date)}</div>
               <div style={{ fontSize: 9, color: T.dim }}>{daysAgo(s.date)}</div>
             </div>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
               {s.sets.filter((x) => x.reps).map((x, j) => (
-                <div key={j} style={{ padding: "3px 8px", background: T.bg, borderRadius: 6, fontSize: 10.5, color: "#CCC", border: `1px solid ${T.border}` }}>
+                <div key={j} style={{ padding: "3px 8px", background: T.tileHi, borderRadius: 7, fontSize: 10.5, color: T.sub }}>
                   {x.weight ? `${x.weight}×` : ""}{x.reps}
                 </div>
               ))}
@@ -925,7 +1145,7 @@ function ExerciseDetailView({ exerciseId, history, onBack }) {
   );
 }
 
-// ---------------- MODALS ----------------
+// ============ MODALS ============
 
 function CardioSheet({ open, onClose, onSave }) {
   const [type, setType] = useState(CARDIO_TYPES[0].id);
@@ -934,39 +1154,51 @@ function CardioSheet({ open, onClose, onSave }) {
     <Sheet open={open} onClose={onClose} title="Log Cardio">
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 14 }}>
         {CARDIO_TYPES.map((c) => (
-          <div key={c.id} onClick={() => { setType(c.id); setMinutes(c.defaultMin); }} style={{ padding: "13px 12px", borderRadius: 12, border: `1px solid ${type === c.id ? T.blue : T.border}`, background: type === c.id ? "rgba(96,165,250,0.1)" : T.cardHi, cursor: "pointer", textAlign: "center" }}>
-            <div style={{ fontSize: 20 }}>{c.icon}</div>
-            <div style={{ fontSize: 11, fontWeight: 700, marginTop: 4, color: type === c.id ? T.blue : T.text }}>{c.name}</div>
+          <div key={c.id} onClick={() => { setType(c.id); setMinutes(c.defaultMin); }} style={{ padding: "14px 12px", borderRadius: 16, background: type === c.id ? "rgba(146,232,42,0.14)" : T.tileHi, border: type === c.id ? `1.5px solid ${T.exercise}` : "1.5px solid transparent", cursor: "pointer", textAlign: "center" }}>
+            <div style={{ fontSize: 21 }}>{c.icon}</div>
+            <div style={{ fontSize: 11, fontWeight: 700, marginTop: 4, color: type === c.id ? T.exercise : T.text }}>{c.name}</div>
           </div>
         ))}
       </div>
-      <div style={{ fontSize: 10, letterSpacing: 2, color: T.dim, fontWeight: 700, marginBottom: 8 }}>DURATION (MIN)</div>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
-        <button onClick={() => setMinutes(Math.max(5, minutes - 5))} style={{ width: 44, height: 44, borderRadius: 12, border: `1px solid ${T.border2}`, background: T.cardHi, color: T.text, cursor: "pointer", fontSize: 18 }}>−</button>
-        <div style={{ flex: 1, textAlign: "center", fontSize: 28, fontWeight: 800 }}>{minutes}</div>
-        <button onClick={() => setMinutes(minutes + 5)} style={{ width: 44, height: 44, borderRadius: 12, border: `1px solid ${T.border2}`, background: T.cardHi, color: T.text, cursor: "pointer", fontSize: 18 }}>+</button>
+      <Label>DURATION · MIN</Label>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "8px 0 16px" }}>
+        <button onClick={() => setMinutes(Math.max(5, minutes - 5))} style={{ ...tileSub({ borderRadius: 13 }), border: "none", width: 46, height: 46, color: T.text, cursor: "pointer", fontSize: 18 }}>−</button>
+        <div style={{ flex: 1, textAlign: "center", fontSize: 30, fontWeight: 800 }}>{minutes}</div>
+        <button onClick={() => setMinutes(minutes + 5)} style={{ ...tileSub({ borderRadius: 13 }), border: "none", width: 46, height: 46, color: T.text, cursor: "pointer", fontSize: 18 }}>+</button>
       </div>
-      <button onClick={() => { onSave({ type, minutes, date: todayStr() }); onClose(); }} style={{ width: "100%", padding: 15, borderRadius: 12, border: "none", background: T.blue, color: "#0A0A0A", fontSize: 12, fontWeight: 800, letterSpacing: 2, cursor: "pointer", fontFamily: "inherit" }}>
+      <button onClick={() => { onSave({ type, minutes, date: todayStr() }); onClose(); }} style={{ width: "100%", padding: 15, borderRadius: 14, border: "none", background: T.exercise, color: "#122400", fontSize: 12, fontWeight: 800, letterSpacing: 2, cursor: "pointer", fontFamily: "inherit" }}>
         SAVE CARDIO
       </button>
     </Sheet>
   );
 }
 
-function WeightSheet({ open, onClose, onSave, lastKg }) {
-  const [kg, setKg] = useState(lastKg || 85);
-  useEffect(() => { if (open && lastKg) setKg(lastKg); }, [open, lastKg]);
+function WeightSheet({ open, onClose, onSave, lastEntry }) {
+  const [kg, setKg] = useState(lastEntry?.kg || 85);
+  const [waist, setWaist] = useState("");
+  useEffect(() => { if (open) { setKg(lastEntry?.kg || 85); setWaist(""); } }, [open]);
   return (
-    <Sheet open={open} onClose={onClose} title="Log Bodyweight">
-      <div style={{ fontSize: 11, color: T.mid, marginBottom: 14, lineHeight: 1.5 }}>Weigh in the morning, after the bathroom, before food. Same conditions daily — the 7-day average does the rest.</div>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
-        <button onClick={() => setKg(Math.round((kg - 0.1) * 10) / 10)} style={{ width: 44, height: 44, borderRadius: 12, border: `1px solid ${T.border2}`, background: T.cardHi, color: T.text, cursor: "pointer", fontSize: 18 }}>−</button>
+    <Sheet open={open} onClose={onClose} title="Log Body">
+      <div style={{ fontSize: 11, color: T.sub, marginBottom: 14, lineHeight: 1.5 }}>Morning, after bathroom, before food — same conditions daily. The 7-day average does the rest.</div>
+      <Label>WEIGHT · KG</Label>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "8px 0 14px" }}>
+        <button onClick={() => setKg(Math.round((kg - 0.1) * 10) / 10)} style={{ ...tileSub({ borderRadius: 13 }), border: "none", width: 46, height: 46, color: T.text, cursor: "pointer", fontSize: 18 }}>−</button>
         <input type="number" inputMode="decimal" value={kg} onChange={(e) => setKg(parseFloat(e.target.value) || 0)}
-          style={{ flex: 1, background: "#0C0C0F", border: `1px solid ${T.border2}`, borderRadius: 12, padding: "12px", color: T.text, fontSize: 26, fontWeight: 800, fontFamily: "inherit", textAlign: "center", outline: "none" }} />
-        <button onClick={() => setKg(Math.round((kg + 0.1) * 10) / 10)} style={{ width: 44, height: 44, borderRadius: 12, border: `1px solid ${T.border2}`, background: T.cardHi, color: T.text, cursor: "pointer", fontSize: 18 }}>+</button>
+          style={{ flex: 1, background: "#000", border: `1px solid ${T.hairline}`, borderRadius: 13, padding: 12, color: T.text, fontSize: 27, fontWeight: 800, fontFamily: "inherit", textAlign: "center", outline: "none" }} />
+        <button onClick={() => setKg(Math.round((kg + 0.1) * 10) / 10)} style={{ ...tileSub({ borderRadius: 13 }), border: "none", width: 46, height: 46, color: T.text, cursor: "pointer", fontSize: 18 }}>+</button>
       </div>
-      <button onClick={() => { if (kg > 30 && kg < 200) { onSave({ kg: Math.round(kg * 10) / 10, date: todayStr() }); onClose(); } }} style={{ width: "100%", padding: 15, borderRadius: 12, border: "none", background: T.violet, color: "#0A0A0A", fontSize: 12, fontWeight: 800, letterSpacing: 2, cursor: "pointer", fontFamily: "inherit" }}>
-        SAVE WEIGHT
+      <Label>WAIST AT NAVEL · CM — OPTIONAL</Label>
+      <input type="number" inputMode="decimal" value={waist} onChange={(e) => setWaist(e.target.value)} placeholder="e.g., 94 — best lower-ab fat tracker"
+        style={{ width: "100%", boxSizing: "border-box", background: "#000", border: `1px solid ${T.hairline}`, borderRadius: 13, padding: "13px 14px", color: T.text, fontSize: 15, fontWeight: 600, fontFamily: "inherit", outline: "none", margin: "8px 0 16px" }} />
+      <button onClick={() => {
+        if (kg > 30 && kg < 200) {
+          const entry = { kg: Math.round(kg * 10) / 10, date: todayStr() };
+          const wv = parseFloat(waist);
+          if (wv > 40 && wv < 200) entry.waist = Math.round(wv * 10) / 10;
+          onSave(entry); onClose();
+        }
+      }} style={{ width: "100%", padding: 15, borderRadius: 14, border: "none", background: T.stand, color: "#002229", fontSize: 12, fontWeight: 800, letterSpacing: 2, cursor: "pointer", fontFamily: "inherit" }}>
+        SAVE
       </button>
     </Sheet>
   );
@@ -986,7 +1218,7 @@ function SettingsSheet({ open, onClose, data, onImport, onToggleTimer, onReset }
       a.download = `ark-fitness-backup-${todayStr()}.json`;
       a.click();
       URL.revokeObjectURL(a.href);
-    } catch { /* fall through to clipboard */ }
+    } catch { /* clipboard below */ }
     navigator.clipboard?.writeText(json).then(() => setMsg({ ok: true, text: "Backup downloaded + copied to clipboard." })).catch(() => setMsg({ ok: true, text: "Backup file downloaded." }));
   };
 
@@ -1001,57 +1233,55 @@ function SettingsSheet({ open, onClose, data, onImport, onToggleTimer, onReset }
     }
   };
 
+  const btn = { width: "100%", padding: 13, borderRadius: 14, background: T.tileHi, border: "none", color: T.text, fontSize: 11.5, fontWeight: 800, letterSpacing: 1.5, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginBottom: 8 };
+
   return (
     <Sheet open={open} onClose={onClose} title="Settings & Data">
-      <div style={{ fontSize: 10, letterSpacing: 2, color: T.dim, fontWeight: 700, marginBottom: 8 }}>YOUR DATA</div>
-      <div style={{ fontSize: 11, color: T.mid, marginBottom: 12, lineHeight: 1.55 }}>
-        {data.history.length} workouts · {data.bodyWeight.length} weigh-ins · {data.cardio.length} cardio sessions.
-        Data lives in this browser's storage. <b style={{ color: T.text }}>Moving to a new device or URL?</b> Export here, then Import there.
+      <Label>YOUR DATA</Label>
+      <div style={{ fontSize: 11, color: T.sub, margin: "8px 0 12px", lineHeight: 1.55 }}>
+        {data.history.length} workouts · {data.bodyWeight.length} weigh-ins · {data.cardio.length} cardio.
+        Lives in this browser. <b style={{ color: T.text }}>Moving device or URL?</b> Export here → Import there.
       </div>
 
-      <button onClick={doExport} style={{ width: "100%", padding: 13, borderRadius: 12, border: `1px solid ${T.border2}`, background: T.cardHi, color: T.text, fontSize: 11.5, fontWeight: 800, letterSpacing: 1.5, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginBottom: 8 }}>
-        <Download size={15} /> EXPORT BACKUP (JSON)
-      </button>
+      <button onClick={doExport} style={btn}><Download size={15} /> EXPORT BACKUP (JSON)</button>
 
       <input ref={fileRef} type="file" accept="application/json,.json" style={{ display: "none" }}
         onChange={(e) => { const f = e.target.files?.[0]; if (f) { const r = new FileReader(); r.onload = () => doImport(r.result); r.readAsText(f); } e.target.value = ""; }} />
-      <button onClick={() => fileRef.current?.click()} style={{ width: "100%", padding: 13, borderRadius: 12, border: `1px solid ${T.border2}`, background: T.cardHi, color: T.text, fontSize: 11.5, fontWeight: 800, letterSpacing: 1.5, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginBottom: 8 }}>
-        <Upload size={15} /> IMPORT FROM FILE
-      </button>
+      <button onClick={() => fileRef.current?.click()} style={btn}><Upload size={15} /> IMPORT FROM FILE</button>
 
       <textarea value={importText} onChange={(e) => setImportText(e.target.value)} placeholder="…or paste backup JSON here"
-        style={{ width: "100%", height: 64, background: "#0C0C0F", border: `1px solid ${T.border}`, borderRadius: 10, padding: 10, color: T.text, fontSize: 10.5, fontFamily: "inherit", outline: "none", resize: "none", boxSizing: "border-box" }} />
+        style={{ width: "100%", height: 64, background: "#000", border: `1px solid ${T.hairline}`, borderRadius: 12, padding: 10, color: T.text, fontSize: 10.5, fontFamily: "inherit", outline: "none", resize: "none", boxSizing: "border-box" }} />
       {importText.trim() && (
-        <button onClick={() => doImport(importText)} style={{ width: "100%", padding: 11, marginTop: 6, borderRadius: 10, border: "none", background: T.green, color: "#0A0A0A", fontSize: 11, fontWeight: 800, letterSpacing: 1.5, cursor: "pointer", fontFamily: "inherit" }}>
+        <button onClick={() => doImport(importText)} style={{ ...btn, background: T.exercise, color: "#122400", marginTop: 6 }}>
           IMPORT PASTED DATA
         </button>
       )}
 
-      {msg && <div style={{ marginTop: 10, padding: "9px 11px", borderRadius: 10, fontSize: 11, lineHeight: 1.45, background: msg.ok ? "rgba(74,222,128,0.1)" : "rgba(250,75,75,0.1)", color: msg.ok ? "#B7EFC5" : "#FCA5A5", border: `1px solid ${msg.ok ? "rgba(74,222,128,0.3)" : "rgba(250,75,75,0.3)"}` }}>{msg.text}</div>}
+      {msg && <div style={{ marginTop: 10, padding: "9px 11px", borderRadius: 12, fontSize: 11, lineHeight: 1.45, background: msg.ok ? "rgba(146,232,42,0.12)" : "rgba(250,17,79,0.12)", color: msg.ok ? "#DBF7B8" : "#FFB4C4" }}>{msg.text}</div>}
 
-      <div style={{ height: 1, background: T.border, margin: "16px 0" }} />
+      <div style={{ height: 1, background: T.hairline, margin: "16px 0" }} />
 
       <div onClick={onToggleTimer} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "4px 0 16px", cursor: "pointer" }}>
         <div>
           <div style={{ fontSize: 12.5, fontWeight: 700 }}>Rest timer</div>
           <div style={{ fontSize: 10, color: T.dim, marginTop: 2 }}>Auto-starts after each logged set</div>
         </div>
-        <div style={{ width: 44, height: 26, borderRadius: 13, background: data.settings?.restTimer !== false ? T.green : T.cardHi, border: `1px solid ${T.border2}`, position: "relative", transition: "background 0.2s" }}>
-          <div style={{ position: "absolute", top: 2, left: data.settings?.restTimer !== false ? 20 : 2, width: 20, height: 20, borderRadius: 10, background: "#fff", transition: "left 0.2s" }} />
+        <div style={{ width: 46, height: 27, borderRadius: 14, background: data.settings?.restTimer !== false ? T.exercise : T.tileHi2, position: "relative", transition: "background 0.2s" }}>
+          <div style={{ position: "absolute", top: 2, left: data.settings?.restTimer !== false ? 21 : 2, width: 23, height: 23, borderRadius: 12, background: "#fff", transition: "left 0.2s", boxShadow: "0 2px 6px rgba(0,0,0,0.4)" }} />
         </div>
       </div>
 
-      <button onClick={onReset} style={{ width: "100%", padding: 12, borderRadius: 12, border: "1px solid rgba(250,75,75,0.35)", background: "rgba(250,75,75,0.06)", color: "#FCA5A5", fontSize: 11, fontWeight: 800, letterSpacing: 1.5, cursor: "pointer", fontFamily: "inherit" }}>
+      <button onClick={onReset} style={{ width: "100%", padding: 12, borderRadius: 14, border: "none", background: "rgba(250,17,79,0.12)", color: "#FF7B9C", fontSize: 11, fontWeight: 800, letterSpacing: 1.5, cursor: "pointer", fontFamily: "inherit" }}>
         RESET ALL DATA
       </button>
-      <div style={{ fontSize: 9.5, color: T.faint, textAlign: "center", marginTop: 14 }}>ARK Fitness v2.0 · Barbell Era · Built for Ayush</div>
+      <div style={{ fontSize: 9.5, color: T.faint, textAlign: "center", marginTop: 14 }}>ARK Fitness v4 · Built for Ayush</div>
     </Sheet>
   );
 }
 
-// ---------------- BOTTOM NAV ----------------
+// ============ TAB BAR ============
 
-function BottomNav({ tab, setTab }) {
+function Dock({ tab, setTab }) {
   const items = [
     { id: "today", icon: Home, label: "Today" },
     { id: "train", icon: Dumbbell, label: "Train" },
@@ -1059,14 +1289,20 @@ function BottomNav({ tab, setTab }) {
     { id: "history", icon: HistoryIcon, label: "History" },
   ];
   return (
-    <div style={{ position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 500, background: "rgba(13,13,16,0.94)", backdropFilter: "blur(16px)", borderTop: `1px solid ${T.border}`, display: "flex", zIndex: 40, paddingBottom: "env(safe-area-inset-bottom)" }}>
+    <div style={{
+      position: "fixed", bottom: "calc(10px + env(safe-area-inset-bottom))", left: "50%", transform: "translateX(-50%)",
+      width: "calc(100% - 24px)", maxWidth: 476, zIndex: 40,
+      background: "rgba(28,28,30,0.88)", backdropFilter: "blur(24px)", WebkitBackdropFilter: "blur(24px)",
+      borderRadius: 28, padding: "6px 8px", boxShadow: "0 14px 44px rgba(0,0,0,0.6)",
+      display: "flex",
+    }}>
       {items.map((it) => {
         const active = tab === it.id;
         const Icon = it.icon;
         return (
-          <button key={it.id} onClick={() => setTab(it.id)} style={{ flex: 1, padding: "10px 0 8px", background: "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 3, WebkitTapHighlightColor: "transparent", fontFamily: "inherit" }}>
-            <Icon size={20} color={active ? T.text : T.dim} strokeWidth={active ? 2.4 : 2} />
-            <div style={{ fontSize: 8.5, letterSpacing: 0.5, fontWeight: 700, color: active ? T.text : T.dim }}>{it.label}</div>
+          <button key={it.id} onClick={() => setTab(it.id)} style={{ flex: 1, padding: "9px 0 7px", background: active ? "rgba(146,232,42,0.14)" : "none", borderRadius: 20, border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 3, fontFamily: "inherit", WebkitTapHighlightColor: "transparent" }}>
+            <Icon size={20} color={active ? T.exercise : T.dim} strokeWidth={active ? 2.4 : 2} />
+            <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: 0.3, color: active ? T.exercise : T.dim }}>{it.label}</div>
           </button>
         );
       })}
@@ -1074,24 +1310,28 @@ function BottomNav({ tab, setTab }) {
   );
 }
 
-// ---------------- MAIN APP ----------------
+// ============ APP ============
 
 export default function App() {
   const [data, setData] = useState(null);
   const [tab, setTab] = useState("today");
-  const [screen, setScreen] = useState(null); // null | {type:'workout',workoutType} | {type:'exercise',id}
+  const [screen, setScreen] = useState(null);
   const [banner, setBanner] = useState(null);
   const [showCardio, setShowCardio] = useState(false);
   const [showWeight, setShowWeight] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showAwards, setShowAwards] = useState(false);
+  const [viewSession, setViewSession] = useState(null);
 
   useEffect(() => { setData(loadData()); }, []);
   const persist = useCallback((d) => { setData(d); saveData(d); }, []);
 
   if (!data) return (
-    <div style={{ minHeight: "100vh", background: T.bg, color: T.mid, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Space Grotesk', sans-serif" }}>
-      <div style={{ fontSize: 11, letterSpacing: 3 }}>LOADING…</div>
-    </div>
+    <Shell>
+      <div style={{ minHeight: "100vh", color: T.dim, display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <div style={{ fontSize: 11, letterSpacing: 3 }}>LOADING…</div>
+      </div>
+    </Shell>
   );
 
   const handleSaveSession = (session, isComplete) => {
@@ -1110,7 +1350,6 @@ export default function App() {
     }
   };
 
-  // Full-screen flows
   if (screen?.type === "workout") {
     return (
       <Shell>
@@ -1128,35 +1367,37 @@ export default function App() {
 
   return (
     <Shell>
-      <div style={{ minHeight: "100vh", background: T.bg, color: T.text, paddingBottom: 90, paddingTop: "env(safe-area-inset-top)" }}>
+      <div style={{ minHeight: "100vh", color: T.text, paddingBottom: 104, paddingTop: "env(safe-area-inset-top)" }}>
         {tab === "today" && (
           <TodayView data={data} banner={banner} onDismissBanner={() => setBanner(null)}
             onStartWorkout={(wt) => setScreen({ type: "workout", workoutType: wt })}
             onLogCardio={() => setShowCardio(true)} onLogWeight={() => setShowWeight(true)}
-            onOpenSettings={() => setShowSettings(true)} />
+            onOpenSettings={() => setShowSettings(true)} onOpenAwards={() => setShowAwards(true)} />
         )}
         {tab === "train" && <TrainView data={data} onStartWorkout={(wt) => setScreen({ type: "workout", workoutType: wt })} />}
         {tab === "insights" && <InsightsView data={data} />}
-        {tab === "history" && <HistoryView data={data} onSelectExercise={(id) => setScreen({ type: "exercise", id })} />}
+        {tab === "history" && <HistoryView data={data} onSelectExercise={(id) => setScreen({ type: "exercise", id })} onSelectSession={(s) => setViewSession(s)} />}
       </div>
 
-      <BottomNav tab={tab} setTab={setTab} />
+      <Dock tab={tab} setTab={setTab} />
 
       <CardioSheet open={showCardio} onClose={() => setShowCardio(false)} onSave={(c) => persist({ ...data, cardio: [...data.cardio, c] })} />
-      <WeightSheet open={showWeight} onClose={() => setShowWeight(false)} lastKg={data.bodyWeight[data.bodyWeight.length - 1]?.kg}
+      <WeightSheet open={showWeight} onClose={() => setShowWeight(false)} lastEntry={data.bodyWeight[data.bodyWeight.length - 1]}
         onSave={(w) => persist({ ...data, bodyWeight: [...data.bodyWeight.filter((x) => x.date !== w.date), w] })} />
       <SettingsSheet open={showSettings} onClose={() => setShowSettings(false)} data={data}
         onImport={(d) => persist(d)}
         onToggleTimer={() => persist({ ...data, settings: { ...data.settings, restTimer: data.settings?.restTimer === false } })}
         onReset={() => { if (confirm("Delete ALL workout history, weigh-ins and cardio? This cannot be undone.") && confirm("Really sure? Export a backup first if in doubt.")) { localStorage.removeItem(STORAGE_KEY); location.reload(); } }} />
+      <AwardsSheet open={showAwards} onClose={() => setShowAwards(false)} data={data} />
+      <SessionSheet session={viewSession} onClose={() => setViewSession(null)} />
     </Shell>
   );
 }
 
 function Shell({ children }) {
   return (
-    <div style={{ fontFamily: "'Space Grotesk', 'Inter', -apple-system, sans-serif", background: T.bg, minHeight: "100vh", maxWidth: 500, margin: "0 auto" }}>
-      {children}
+    <div style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", Inter, "Segoe UI", sans-serif', minHeight: "100vh", background: "#000" }}>
+      <div style={{ position: "relative", maxWidth: 500, margin: "0 auto" }}>{children}</div>
     </div>
   );
 }
