@@ -2,23 +2,14 @@
 // ARK FITNESS — Engine v2
 // Storage (with v1 migration), suggestions, analytics.
 // ============================================================
-import { WORKOUTS, CATALOG, ROTATION, BODYWEIGHT_TARGET } from "./data.js";
+import { WORKOUTS, CATALOG, ROTATION, BODYWEIGHT_TARGET, BIG_THREE } from "./data.js";
 
 export const STORAGE_KEY = "ark_fitness_v3"; // SAME key as v1 → history preserved
 
 // ---------------- STORAGE ----------------
 
 function defaults() {
-  return {
-    version: 2,
-    rotationIndex: 0,
-    currentSession: null,
-    history: [],
-    cardio: [],
-    bodyWeight: [],
-    settings: { restTimer: true },
-    createdAt: new Date().toISOString(),
-  };
+  return migrate({});
 }
 
 export function migrate(parsed) {
@@ -33,6 +24,13 @@ export function migrate(parsed) {
     bodyWeight: Array.isArray(parsed.bodyWeight) ? parsed.bodyWeight : [],
     settings: { restTimer: true, ...(parsed.settings || {}) },
     createdAt: parsed.createdAt ?? new Date().toISOString(),
+    // Coach system (v5) — all additive
+    profile: parsed.profile ?? null,
+    block: parsed.block ?? { number: 1, startDate: new Date().toISOString().split("T")[0], lengthWeeks: 4 },
+    photos: Array.isArray(parsed.photos) ? parsed.photos : [],
+    coachLog: Array.isArray(parsed.coachLog) ? parsed.coachLog : [],
+    adjustments: parsed.adjustments ?? {},
+    checkpoints: Array.isArray(parsed.checkpoints) ? parsed.checkpoints : [],
   };
 }
 
@@ -123,7 +121,13 @@ export function bestE1RM(sets) {
 // ---------------- SUGGESTION ENGINE ----------------
 // Double progression + stall detection + rust-knock after long gaps.
 
-export function getSuggestion(exercise, history) {
+export function getSuggestion(exercise, history, ctx = {}) {
+  // Coach adjustment (accepted at a checkpoint or from a stall proposal) wins
+  const adj = ctx.adjustments?.[exercise.id];
+  if (adj?.weight != null) {
+    return { weight: adj.weight, reason: adj.reason || `Coach adjustment → ${adj.weight}kg. Rebuild from here.`, progression: "reset" };
+  }
+
   const past = getExerciseHistory(exercise.id, history, 3);
   if (past.length === 0) {
     return { weight: exercise.startWeight, isFirstTime: true, reason: "First session — start here, own the form.", progression: "new" };
@@ -137,6 +141,12 @@ export function getSuggestion(exercise, history) {
 
   const lastWeight = parseFloat(done[0].weight) || exercise.startWeight;
   const repsHit = done.map((s) => parseInt(s.reps) || 0);
+
+  // Deload week: ~60% load, stay far from failure
+  if (ctx.deload && exercise.type === "weighted" && lastWeight > 0) {
+    const dl = Math.max(exercise.startWeight * 0.6, Math.round((lastWeight * 0.6) / 2.5) * 2.5);
+    return { weight: dl, reason: `DELOAD WEEK — ~60% load (${dl}kg), stop 4+ reps shy of failure. Recovery IS the workout.`, lastWeight, lastReps: repsHit, progression: "deload" };
+  }
 
   // Long layoff → shave 10%
   const gapDays = Math.floor((Date.now() - new Date(last.date).getTime()) / DAY_MS);
@@ -249,6 +259,11 @@ export function readiness(data) {
     else if (ratio > 1.3) { score -= 10; factors.push({ good: false, text: `Load ramping fast (ACWR ${ratio.toFixed(2)}). Watch recovery.` }); }
     else if (ratio < 0.8) { factors.push({ good: false, text: `Training load below your baseline (ACWR ${ratio.toFixed(2)}). Volume is slipping.` }); }
     else { score += 4; factors.push({ good: true, text: `Workload balanced (ACWR ${ratio.toFixed(2)}). Ideal progression zone.` }); }
+  }
+
+  if (data.profile?.sleepHours && data.profile.sleepHours <= 6.5) {
+    score -= 5;
+    factors.push({ good: false, text: `~${data.profile.sleepHours}h sleep baseline — recovery ceiling lowered. Guard your nights.` });
   }
 
   score = Math.max(5, Math.min(100, Math.round(score)));
@@ -467,4 +482,109 @@ export function waistTrend(bodyWeight) {
   const monthAgo = w.find((x) => new Date(x.date).getTime() >= cutoff) || w[0];
   const delta = Math.round((latest.waist - monthAgo.waist) * 10) / 10;
   return { latest: latest.waist, delta, count: w.length };
+}
+
+// ---------------- MESOCYCLE / BLOCK ENGINE ----------------
+
+export function blockStatus(data) {
+  const b = data.block || { number: 1, startDate: todayStr(), lengthWeeks: 4 };
+  const daysIn = Math.max(0, Math.floor((Date.now() - new Date(b.startDate).getTime()) / DAY_MS));
+  const rawWeek = Math.floor(daysIn / 7) + 1;
+  const L = b.lengthWeeks || 4;
+  const checkpointDue = rawWeek > L;
+  const deloadActive = rawWeek === L;
+  const phase = checkpointDue ? "checkpoint" : deloadActive ? "deload" : "build";
+  return { number: b.number || 1, week: Math.min(rawWeek, L), weeks: L, daysIn, phase, deloadActive, checkpointDue };
+}
+
+// ---------------- COACH BRIEFING (home screen brain) ----------------
+
+export function briefing(data) {
+  const bs = blockStatus(data);
+  const rec = todayRecommendation(data);
+  const lines = [];
+
+  const lastS = data.history[data.history.length - 1];
+  if (lastS) {
+    const w = WORKOUTS[lastS.workoutType];
+    const gap = Math.floor((Date.now() - new Date(lastS.date).getTime()) / DAY_MS);
+    lines.push(`Last trained: ${w ? w.name : lastS.workoutType} — ${gap === 0 ? "today" : gap === 1 ? "yesterday" : `${gap} days ago`}${lastS.feel ? ` (felt ${lastS.feel})` : ""}.`);
+    if (gap >= 5) lines.push(`${gap} days is a long gap — today we restart momentum, not chase heroics.`);
+  } else {
+    lines.push("No sessions logged yet. Today is Day 1.");
+  }
+
+  if (bs.checkpointDue) {
+    lines.push(`Block ${bs.number} is complete. Time for your checkpoint review — weigh-in, photos, and the plan for Block ${bs.number + 1}.`);
+    return { mode: "checkpoint", title: "Checkpoint due", sub: "4 weeks done. Let's review the evidence and set the next block.", lines, workout: null, block: bs };
+  }
+  if (bs.deloadActive) {
+    lines.push(`Block ${bs.number} · Week ${bs.week} of ${bs.weeks} — DELOAD. Loads drop to ~60%. Sleep and food do the building this week.`);
+  } else {
+    lines.push(`Block ${bs.number} · Week ${bs.week} of ${bs.weeks} — ${bs.week === bs.weeks - 1 ? "final push week before deload." : "build week. Beat the logbook."}`);
+  }
+
+  return { mode: rec.kind, title: rec.title, sub: rec.sub, lines, workout: rec.workout, block: bs };
+}
+
+// ---------------- CHECKPOINT ENGINE ----------------
+
+export function computeCheckpointSummary(data) {
+  const bs = blockStatus(data);
+  const from = new Date(data.block?.startDate || todayStr()).getTime();
+  const inBlock = data.history.filter((s) => new Date(s.date).getTime() >= from);
+  const vol = inBlock.reduce((sum, s) => sum + sessionVolume(s), 0);
+  const prs = inBlock.reduce((sum, s) => sum + (s.prs?.length || 0), 0);
+
+  // e1RM movement on Big-3 within the block
+  const strength = [];
+  for (const id of BIG_THREE) {
+    const seq = getExerciseHistory(id, inBlock, 50).reverse();
+    if (seq.length >= 2) {
+      const first = bestE1RM(seq[0].sets), lastE = bestE1RM(seq[seq.length - 1].sets);
+      if (first > 0) strength.push({ id, name: CATALOG[id].name, delta: Math.round((lastE - first) * 10) / 10 });
+    }
+  }
+
+  // bodyweight change across block (7d MA vs MA)
+  const bw = bodyweightTrend(data.bodyWeight);
+  let weightDelta = null;
+  if (bw && bw.series.length >= 2) {
+    const startMA = bw.series.find((p) => new Date(p.date).getTime() >= from)?.ma ?? bw.series[0].ma;
+    weightDelta = Math.round((bw.series[bw.series.length - 1].ma - startMA) * 10) / 10;
+  }
+
+  const stalls = stalledLifts(data.history);
+  const cardioMin = data.cardio.filter((c) => new Date(c.date).getTime() >= from).reduce((s, c) => s + (c.minutes || 0), 0);
+
+  // ---- Proposals (coach decides, you confirm) ----
+  const proposals = [];
+  for (const s of stalls) {
+    const ex = CATALOG[s.id];
+    const to = Math.max(ex.startWeight, Math.round((s.weight * 0.9) / 2.5) * 2.5);
+    proposals.push({ id: `deload_${s.id}`, type: "deload_lift", exId: s.id, weight: to, on: true, text: `${s.name}: stalled 3 sessions at ${s.weight}kg → restart at ${to}kg and rebuild past it.` });
+  }
+  if (weightDelta != null && weightDelta >= -0.2) {
+    proposals.push({ id: "nutrition", type: "note", on: true, text: `Scale barely moved (${weightDelta >= 0 ? "+" : ""}${weightDelta}kg). The training is fine — the deficit isn't real. Tighten evening snacks & track protein this block.` });
+  }
+  if (inBlock.length < 12) {
+    proposals.push({ id: "consistency", type: "note", on: true, text: `${inBlock.length} sessions this block (target 16). Priority for Block ${bs.number + 1}: show up. Nothing else matters more.` });
+  }
+
+  return { block: bs, sessions: inBlock.length, volume: Math.round(vol), prs, strength, weightDelta, cardioMin, stalls, proposals };
+}
+
+export function claudeHandoffText(data, summary) {
+  const p = data.profile || {};
+  const s = summary;
+  const strengthTxt = s.strength.length ? s.strength.map((x) => `${x.name}: ${x.delta >= 0 ? "+" : ""}${x.delta}kg e1RM`).join(", ") : "not enough Big-3 data";
+  return `ARK Fitness — Block ${s.block.number} checkpoint (${todayStr()})
+
+Profile: ${p.age || "?"}y, ${p.heightCm || "?"}cm, goal: ${p.goal || "lean & dense (ARK)"}. Injuries: ${(p.injuries || []).join(", ") || "none flagged"}.
+Block stats: ${s.sessions} sessions, ${s.volume.toLocaleString()}kg volume, ${s.prs} PRs, ${s.cardioMin} min cardio.
+Strength (e1RM change): ${strengthTxt}.
+Bodyweight (7d avg): ${s.weightDelta != null ? `${s.weightDelta >= 0 ? "+" : ""}${s.weightDelta}kg over the block` : "insufficient data"}.
+Stalled lifts: ${s.stalls.length ? s.stalls.map((x) => x.name).join(", ") : "none"}.
+
+I'm attaching my progress photos (front/side/back). Please assess: estimated body-fat change, visible muscle changes vs last checkpoint, weak points to prioritise, and whether the next block's plan should change.`;
 }

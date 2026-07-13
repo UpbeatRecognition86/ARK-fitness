@@ -3,15 +3,17 @@ import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, Tooltip, BarChart, 
 import {
   ArrowLeft, ChevronRight, ChevronDown, Check, TrendingUp, Minus as MinusIcon, Plus, Minus,
   Flame, X, AlertCircle, Repeat, Settings as SettingsIcon, Download, Upload, Wind,
-  Activity, Scale, Timer, SkipForward, Home, Dumbbell, BarChart3, History as HistoryIcon, Trophy,
+  Activity, Scale, Timer, SkipForward, Home, Dumbbell, BarChart3, History as HistoryIcon, Trophy, Camera, Copy, User,
 } from "lucide-react";
 import { WORKOUTS, CATALOG, ROTATION, CARDIO_TYPES, BIG_THREE, BODYWEIGHT_TARGET, WARMUPS, SETUP_GUIDES, COACH_LINES } from "./data.js";
+import { savePhoto, getPhoto, compressImage } from "./photos.js";
 import {
   loadData, saveData, exportJSON, validateImport, STORAGE_KEY,
   fmtDate, daysAgo, todayStr, getExerciseHistory, sessionVolume, sessionSets,
   getSuggestion, calcStreak, readiness, todayRecommendation, detectPRs,
   stalledLifts, muscleBalance, weeklyReport, heatmapData, bodyweightTrend,
   calcACWR, bestE1RM, achievements, waistTrend,
+  blockStatus, briefing, computeCheckpointSummary, claudeHandoffText,
 } from "./engine.js";
 
 // ============ APPLE FITNESS DESIGN SYSTEM ============
@@ -194,9 +196,9 @@ function SetRow({ setIdx, set, exercise, suggestion, onChange, onComplete, isAct
 
 // ============ EXERCISE CARD ============
 
-function ExerciseCard({ slotExercise, activeExercise, sessionData, history, isExpanded, onToggle, onUpdate, onSwap, color, idx }) {
+function ExerciseCard({ slotExercise, activeExercise, sessionData, history, isExpanded, onToggle, onUpdate, onSwap, color, idx, sugCtx }) {
   const ex = activeExercise;
-  const suggestion = useMemo(() => getSuggestion(ex, history), [ex.id, history.length]);
+  const suggestion = useMemo(() => getSuggestion(ex, history, sugCtx), [ex.id, history.length, sugCtx?.deload]);
   const sets = sessionData?.sets || Array.from({ length: ex.sets }, () => ({ weight: "", reps: "", done: false }));
   const completed = sets.filter((s) => s.done).length;
   const activeIdx = sets.findIndex((s) => !s.done);
@@ -212,7 +214,7 @@ function ExerciseCard({ slotExercise, activeExercise, sessionData, history, isEx
     onUpdate({ ...sessionData, sets: arr });
   };
 
-  const progColor = suggestion.progression === "up" ? T.exercise : suggestion.progression === "stalled" ? T.move : suggestion.progression === "hold" ? T.yellow : suggestion.progression === "reset" ? T.stand : color;
+  const progColor = suggestion.progression === "up" ? T.exercise : suggestion.progression === "stalled" ? T.move : suggestion.progression === "hold" ? T.yellow : suggestion.progression === "reset" || suggestion.progression === "deload" ? T.stand : color;
   const ProgIcon = suggestion.progression === "up" ? TrendingUp : suggestion.progression === "stalled" || suggestion.progression === "hold" ? AlertCircle : MinusIcon;
 
   return (
@@ -383,6 +385,8 @@ function FeelSheet({ open, onPick, onSkip }) {
 
 function WorkoutView({ data, workoutType, onBack, onSave }) {
   const workout = WORKOUTS[workoutType];
+  const bs = useMemo(() => blockStatus(data), [data.block?.startDate]);
+  const sugCtx = useMemo(() => ({ adjustments: data.adjustments || {}, deload: bs.deloadActive }), [bs.deloadActive, data.adjustments]);
   const [expandedId, setExpandedId] = useState(workout.exercises[0].id);
   const [session, setSession] = useState(() => {
     if (data.currentSession && data.currentSession.workoutType === workoutType) return data.currentSession;
@@ -451,6 +455,11 @@ function WorkoutView({ data, workoutType, onBack, onSave }) {
       </div>
 
       <div style={{ padding: 14 }}>
+        {bs.deloadActive && (
+          <div style={{ ...tile({ padding: "11px 14px", marginBottom: 10 }), border: `1.5px solid ${T.stand}`, fontSize: 11.5, color: T.sub, lineHeight: 1.5, ...rise(0) }}>
+            <b style={{ color: T.stand }}>DELOAD WEEK.</b> Every lift targets ~60% load. Crisp reps, long rests, leave 4+ in the tank. This is how the next block gets heavier.
+          </div>
+        )}
         <WarmupCard workoutType={workoutType} />
         {slots.map(({ slot, active }, i) => (
           <ExerciseCard key={slot.id} idx={i + 1} slotExercise={slot} activeExercise={active}
@@ -461,7 +470,7 @@ function WorkoutView({ data, workoutType, onBack, onSave }) {
               const newDone = d.sets?.filter((x) => x.done).length || 0;
               updateExercise(active.id, d, newDone > prevDone ? active.restSec : null);
             }}
-            onSwap={(altId) => handleSwap(slot.id, altId)} color={workout.color} />
+            onSwap={(altId) => handleSwap(slot.id, altId)} color={workout.color} sugCtx={sugCtx} />
         ))}
 
         {doneSets > 0 && (
@@ -502,9 +511,10 @@ function WorkoutView({ data, workoutType, onBack, onSave }) {
 
 // ============ TODAY — decluttered, Apple Fitness style ============
 
-function TodayView({ data, banner, onDismissBanner, onStartWorkout, onLogCardio, onLogWeight, onOpenSettings, onOpenAwards }) {
+function TodayView({ data, banner, onDismissBanner, onStartWorkout, onLogCardio, onLogWeight, onOpenSettings, onOpenAwards, onOpenPhotos, onOpenCheckpoint, onFinishSetup }) {
   const r = useMemo(() => readiness(data), [data.history.length, data.cardio.length]);
-  const rec = useMemo(() => todayRecommendation(data), [data.history.length, data.cardio.length, data.rotationIndex]);
+  const rec = useMemo(() => briefing(data), [data.history.length, data.cardio.length, data.rotationIndex, data.block?.startDate, data.block?.number]);
+  const weeklyTarget = data.profile?.daysPerWeek ?? 4;
   const report = useMemo(() => weeklyReport(data), [data.history.length, data.cardio.length]);
   const streak = calcStreak(data.history, data.cardio);
   const aws = useMemo(() => achievements(data), [data.history.length, data.cardio.length]);
@@ -531,19 +541,49 @@ function TodayView({ data, banner, onDismissBanner, onStartWorkout, onLogCardio,
         </div>
       )}
 
-      {/* HERO */}
-      <div onClick={() => rec.workout && onStartWorkout(rec.workout.id)}
-        style={{ ...tile({ padding: 18, marginBottom: 10 }), cursor: rec.workout ? "pointer" : "default", position: "relative", overflow: "hidden", WebkitTapHighlightColor: "transparent", ...rise(block++) }}>
+      {data.profile?.skipped && (
+        <div onClick={onFinishSetup} style={{ ...tile({ padding: "12px 14px", marginBottom: 10 }), display: "flex", alignItems: "center", gap: 10, cursor: "pointer", ...rise(block++) }}>
+          <User size={17} color={T.exercise} />
+          <div style={{ flex: 1, fontSize: 12, color: T.sub }}>Finish coach setup — 2 min, unlocks personalised blocks</div>
+          <ChevronRight size={14} color={T.faint} />
+        </div>
+      )}
+
+      {/* COACH HERO */}
+      <div onClick={() => rec.mode === "checkpoint" ? onOpenCheckpoint() : rec.workout && onStartWorkout(rec.workout.id)}
+        style={{ ...tile({ padding: 18, marginBottom: 10 }), cursor: rec.workout || rec.mode === "checkpoint" ? "pointer" : "default", position: "relative", overflow: "hidden", WebkitTapHighlightColor: "transparent", border: rec.mode === "checkpoint" ? `1.5px solid ${T.exercise}` : "1.5px solid transparent", ...rise(block++) }}>
         {rec.workout && <div style={{ position: "absolute", top: -14, right: -8, fontSize: 88, opacity: 0.10 }}>{rec.workout.icon}</div>}
-        <Label color={rec.workout ? rec.workout.color : T.stand}>{rec.kind === "train" ? "TODAY'S TRAINING" : rec.kind === "urgent" ? "OVERDUE" : rec.kind === "cardio" ? "COACH CALL" : "TODAY"}</Label>
-        <div style={{ fontSize: 23, fontWeight: 800, marginTop: 5, letterSpacing: -0.5 }}>{rec.title}</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <Label color={rec.mode === "checkpoint" ? T.exercise : rec.workout ? rec.workout.color : T.stand}>
+            {rec.mode === "checkpoint" ? "CHECKPOINT DUE" : rec.mode === "train" ? "TODAY'S TRAINING" : rec.mode === "urgent" ? "OVERDUE" : rec.mode === "cardio" ? "COACH CALL" : "TODAY"}
+          </Label>
+          {rec.block && rec.mode !== "checkpoint" && (
+            <div style={{ fontSize: 9, fontWeight: 800, letterSpacing: 0.8, color: rec.block.deloadActive ? T.stand : T.dim, background: T.tileHi, padding: "3px 8px", borderRadius: 7 }}>
+              BLOCK {rec.block.number} · WK {rec.block.week}/{rec.block.weeks}{rec.block.deloadActive ? " · DELOAD" : ""}
+            </div>
+          )}
+        </div>
+        <div style={{ fontSize: 23, fontWeight: 800, marginTop: 6, letterSpacing: -0.5 }}>{rec.title}</div>
         <div style={{ fontSize: 12, color: T.sub, marginTop: 4, lineHeight: 1.5 }}>{rec.sub}</div>
-        {rec.workout && (
+        <div style={{ marginTop: 10 }}>
+          {rec.lines.map((l, i) => (
+            <div key={i} style={{ display: "flex", gap: 7, marginBottom: 4, alignItems: "flex-start" }}>
+              <div style={{ width: 4, height: 4, borderRadius: 2, background: T.exercise, marginTop: 6, flexShrink: 0 }} />
+              <div style={{ fontSize: 11.5, color: T.sub, lineHeight: 1.5 }}>{l}</div>
+            </div>
+          ))}
+        </div>
+        {rec.mode === "checkpoint" && (
+          <button style={{ marginTop: 14, padding: "13px 22px", background: T.exercise, color: "#122400", border: "none", borderRadius: 13, fontSize: 12, fontWeight: 800, letterSpacing: 1.6, cursor: "pointer", fontFamily: "inherit" }}>
+            RUN CHECKPOINT →
+          </button>
+        )}
+        {rec.workout && rec.mode !== "checkpoint" && (
           <button style={{ marginTop: 14, padding: "13px 22px", background: rec.workout.color, color: onColor(rec.workout.color), border: "none", borderRadius: 13, fontSize: 12, fontWeight: 800, letterSpacing: 1.6, cursor: "pointer", fontFamily: "inherit" }}>
             START {rec.workout.label} →
           </button>
         )}
-        {rec.kind === "cardio" && (
+        {rec.mode === "cardio" && (
           <button onClick={(e) => { e.stopPropagation(); onLogCardio(); }} style={{ marginTop: 14, padding: "13px 22px", background: T.stand, color: onColor(T.stand), border: "none", borderRadius: 13, fontSize: 12, fontWeight: 800, letterSpacing: 1.6, cursor: "pointer", fontFamily: "inherit" }}>
             LOG CARDIO →
           </button>
@@ -554,13 +594,13 @@ function TodayView({ data, banner, onDismissBanner, onStartWorkout, onLogCardio,
       {/* ACTIVITY RINGS */}
       <div style={{ ...tile({ marginBottom: 10, padding: 18 }), display: "flex", gap: 18, alignItems: "center", ...rise(block++) }}>
         <TripleRings size={148} rings={[
-          { pct: report.sessions / 4, colors: RING.move },
+          { pct: report.sessions / weeklyTarget, colors: RING.move },
           { pct: Math.min(1, report.cardioMin / 90), colors: RING.exercise },
           { pct: volPct, colors: RING.stand },
         ]} />
         <div style={{ flex: 1 }}>
           {[
-            { c: T.move, label: "Lifts", val: `${report.sessions}/4` },
+            { c: T.move, label: "Lifts", val: `${report.sessions}/${weeklyTarget}` },
             { c: T.exercise, label: "Cardio", val: `${report.cardioMin}/90`, unit: "MIN" },
             { c: T.stand, label: "Volume", val: report.volDelta != null ? `${report.volDelta > 0 ? "+" : ""}${report.volDelta}%` : `${(report.volume / 1000).toFixed(1)}k`, unit: report.volDelta != null ? "VS LAST WK" : "KG" },
           ].map((row, i) => (
@@ -596,11 +636,12 @@ function TodayView({ data, banner, onDismissBanner, onStartWorkout, onLogCardio,
       </div>
 
       {/* QUICK ROW: cardio / body / awards */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 12, ...rise(block++) }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 8, marginBottom: 12, ...rise(block++) }}>
         {[
           { icon: <Activity size={17} color={T.exercise} />, label: "Cardio", onClick: onLogCardio },
           { icon: <Scale size={17} color={T.stand} />, label: "Body", onClick: onLogWeight },
-          { icon: <Trophy size={17} color={T.yellow} />, label: `Awards ${earned}/${aws.length}`, onClick: onOpenAwards },
+          { icon: <Camera size={17} color={T.purple} />, label: "Photos", onClick: onOpenPhotos },
+          { icon: <Trophy size={17} color={T.yellow} />, label: `${earned}/${aws.length}`, onClick: onOpenAwards },
         ].map((b, i) => (
           <div key={i} onClick={b.onClick} style={{ ...tile({ padding: "13px 8px", borderRadius: 16 }), display: "flex", flexDirection: "column", alignItems: "center", gap: 6, cursor: "pointer", WebkitTapHighlightColor: "transparent" }}>
             {b.icon}
@@ -1145,6 +1186,386 @@ function ExerciseDetailView({ exerciseId, history, onBack }) {
   );
 }
 
+
+// ============ PHOTO IMG (async from IndexedDB) ============
+
+function PhotoImg({ id, style }) {
+  const [src, setSrc] = useState(null);
+  useEffect(() => { let ok = true; getPhoto(id).then((d) => ok && setSrc(d)); return () => { ok = false; }; }, [id]);
+  if (!src) return <div style={{ ...style, background: T.tileHi, display: "flex", alignItems: "center", justifyContent: "center", color: T.faint, fontSize: 10 }}>…</div>;
+  return <img src={src} style={{ ...style, objectFit: "cover" }} alt="" />;
+}
+
+// ============ PHOTO CAPTURE ROW (3 angles) ============
+
+const ANGLES = ["front", "side", "back"];
+
+function PhotoCaptureRow({ shots, onShot }) {
+  const refs = { front: useRef(null), side: useRef(null), back: useRef(null) };
+  const handle = async (angle, file) => {
+    if (!file) return;
+    try {
+      const dataUrl = await compressImage(file);
+      const id = `p_${Date.now()}_${angle}`;
+      await savePhoto(id, dataUrl);
+      onShot(angle, id);
+    } catch (e) { console.error("photo save failed", e); }
+  };
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
+      {ANGLES.map((a) => (
+        <div key={a}>
+          <input ref={refs[a]} type="file" accept="image/*" capture="environment" style={{ display: "none" }}
+            onChange={(e) => { handle(a, e.target.files?.[0]); e.target.value = ""; }} />
+          <div onClick={() => refs[a].current?.click()} style={{ ...tileSub({ borderRadius: 14 }), aspectRatio: "3/4", overflow: "hidden", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 6, position: "relative" }}>
+            {shots[a] ? (
+              <PhotoImg id={shots[a]} style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }} />
+            ) : (
+              <>
+                <Camera size={19} color={T.dim} />
+                <div style={{ fontSize: 10, fontWeight: 700, color: T.dim, textTransform: "uppercase", letterSpacing: 1 }}>{a}</div>
+              </>
+            )}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ============ ONBOARDING ============
+
+function Chip({ active, children, onClick, color = T.exercise }) {
+  return (
+    <div onClick={onClick} style={{ padding: "10px 14px", borderRadius: 13, background: active ? "rgba(146,232,42,0.14)" : T.tileHi, border: active ? `1.5px solid ${color}` : "1.5px solid transparent", color: active ? color : T.text, fontSize: 12.5, fontWeight: 700, cursor: "pointer", WebkitTapHighlightColor: "transparent" }}>
+      {children}
+    </div>
+  );
+}
+
+function OnboardingFlow({ initial, onDone, onSkip }) {
+  const [step, setStep] = useState(0);
+  const [f, setF] = useState({ age: initial?.age || "", heightCm: initial?.heightCm || "", weightKg: "", waist: "", goal: "Lean & Dense (ARK)", daysPerWeek: 4, sessionCap: 45, sleepHours: 6.5, injuries: ["Arm (history)"], stress: "High", note: "" });
+  const [shots, setShots] = useState({});
+  const set = (k, v) => setF({ ...f, [k]: v });
+  const num = (v) => (v === "" ? "" : parseFloat(v) || "");
+
+  const inputS = { width: "100%", boxSizing: "border-box", background: "#000", border: `1px solid ${T.hairline}`, borderRadius: 13, padding: "13px 14px", color: T.text, fontSize: 16, fontWeight: 700, fontFamily: "inherit", outline: "none" };
+  const steps = ["Basics", "Training", "Health", "Photos"];
+
+  const finish = () => {
+    const photoIds = Object.entries(shots).map(([angle, id]) => ({ id, angle, date: todayStr(), tag: "baseline" }));
+    onDone({
+      profile: { age: num(f.age) || null, heightCm: num(f.heightCm) || null, goal: f.goal, daysPerWeek: f.daysPerWeek, sessionCap: f.sessionCap, sleepHours: f.sleepHours, injuries: f.injuries.filter((x) => x !== "None"), stress: f.stress, note: f.note, createdAt: new Date().toISOString() },
+      weightKg: num(f.weightKg) || null, waist: num(f.waist) || null, photoIds,
+    });
+  };
+
+  return (
+    <div style={{ minHeight: "100vh", background: "#000", color: T.text, padding: "0 16px", paddingTop: "calc(20px + env(safe-area-inset-top))", paddingBottom: 40, maxWidth: 500, margin: "0 auto" }}>
+      <div style={{ ...rise(0) }}>
+        <div style={{ fontSize: 12, fontWeight: 700, color: T.exercise }}>YOUR COACH · SETUP</div>
+        <div style={{ fontSize: 30, fontWeight: 800, letterSpacing: -0.8, marginTop: 3 }}>{step === 0 ? "Let's build your engine." : steps[step - 1]}</div>
+      </div>
+
+      {step === 0 && (
+        <div style={{ ...rise(1) }}>
+          <div style={{ fontSize: 13.5, color: T.sub, lineHeight: 1.65, margin: "14px 0 20px" }}>
+            Two minutes of honest answers and I'll personalise the ARK plan around your body, schedule and injury history — then run it in 4-week blocks: build, deload, checkpoint, adapt. You confirm every decision I propose.
+          </div>
+          <button onClick={() => setStep(1)} style={{ width: "100%", padding: 16, borderRadius: 15, border: "none", background: T.exercise, color: "#122400", fontSize: 13, fontWeight: 800, letterSpacing: 1.8, cursor: "pointer", fontFamily: "inherit" }}>START SETUP →</button>
+          <button onClick={onSkip} style={{ width: "100%", padding: 13, marginTop: 8, background: "none", border: "none", color: T.dim, fontSize: 11, fontWeight: 700, letterSpacing: 1, cursor: "pointer", fontFamily: "inherit" }}>SKIP FOR NOW</button>
+        </div>
+      )}
+
+      {step === 1 && (
+        <div style={{ ...rise(1), marginTop: 14 }}>
+          <Label>AGE</Label>
+          <input style={{ ...inputS, margin: "8px 0 14px" }} type="number" inputMode="numeric" value={f.age} onChange={(e) => set("age", e.target.value)} placeholder="30" />
+          <Label>HEIGHT · CM</Label>
+          <input style={{ ...inputS, margin: "8px 0 14px" }} type="number" inputMode="numeric" value={f.heightCm} onChange={(e) => set("heightCm", e.target.value)} placeholder="180" />
+          <Label>CURRENT WEIGHT · KG</Label>
+          <input style={{ ...inputS, margin: "8px 0 14px" }} type="number" inputMode="decimal" value={f.weightKg} onChange={(e) => set("weightKg", e.target.value)} placeholder="88.0" />
+          <Label>WAIST AT NAVEL · CM (OPTIONAL)</Label>
+          <input style={{ ...inputS, margin: "8px 0 4px" }} type="number" inputMode="decimal" value={f.waist} onChange={(e) => set("waist", e.target.value)} placeholder="94" />
+        </div>
+      )}
+
+      {step === 2 && (
+        <div style={{ ...rise(1), marginTop: 14 }}>
+          <Label>GOAL</Label>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", margin: "8px 0 16px" }}>
+            {["Lean & Dense (ARK)", "Recomp", "Strength First"].map((g) => <Chip key={g} active={f.goal === g} onClick={() => set("goal", g)}>{g}</Chip>)}
+          </div>
+          <Label>LIFTING DAYS / WEEK</Label>
+          <div style={{ display: "flex", gap: 8, margin: "8px 0 16px" }}>
+            {[3, 4, 5].map((d) => <Chip key={d} active={f.daysPerWeek === d} onClick={() => set("daysPerWeek", d)}>{d} days</Chip>)}
+          </div>
+          <Label>SESSION CAP · MIN</Label>
+          <div style={{ display: "flex", gap: 8, margin: "8px 0 16px" }}>
+            {[30, 45, 60].map((d) => <Chip key={d} active={f.sessionCap === d} onClick={() => set("sessionCap", d)}>{d}</Chip>)}
+          </div>
+          <Label>TYPICAL SLEEP · HOURS</Label>
+          <div style={{ display: "flex", gap: 8, margin: "8px 0 4px", flexWrap: "wrap" }}>
+            {[6, 6.5, 7, 7.5, 8].map((h) => <Chip key={h} active={f.sleepHours === h} onClick={() => set("sleepHours", h)}>{h}h</Chip>)}
+          </div>
+        </div>
+      )}
+
+      {step === 3 && (
+        <div style={{ ...rise(1), marginTop: 14 }}>
+          <Label>INJURY HISTORY (I'LL FLAG RISKY LIFTS)</Label>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", margin: "8px 0 16px" }}>
+            {["Arm (history)", "Shoulder", "Knee", "Lower back", "None"].map((inj) => (
+              <Chip key={inj} active={f.injuries.includes(inj)} color={T.yellow} onClick={() => {
+                if (inj === "None") set("injuries", ["None"]);
+                else set("injuries", f.injuries.includes(inj) ? f.injuries.filter((x) => x !== inj) : [...f.injuries.filter((x) => x !== "None"), inj]);
+              }}>{inj}</Chip>
+            ))}
+          </div>
+          <Label>LIFE STRESS</Label>
+          <div style={{ display: "flex", gap: 8, margin: "8px 0 16px" }}>
+            {["Low", "Medium", "High"].map((s) => <Chip key={s} active={f.stress === s} onClick={() => set("stress", s)}>{s}</Chip>)}
+          </div>
+          <Label>ANYTHING ELSE I SHOULD KNOW (OPTIONAL)</Label>
+          <input style={{ ...inputS, margin: "8px 0 4px", fontWeight: 500, fontSize: 13 }} value={f.note} onChange={(e) => set("note", e.target.value)} placeholder="e.g., gym dumbbells jump 15→20kg" />
+        </div>
+      )}
+
+      {step === 4 && (
+        <div style={{ ...rise(1), marginTop: 14 }}>
+          <div style={{ fontSize: 12.5, color: T.sub, lineHeight: 1.6, marginBottom: 14 }}>
+            Baseline photos — relaxed, same light you'll use every time. These stay on this device only. Every 4 weeks I'll ask for a new set and you can bring them to Claude for the visual assessment.
+          </div>
+          <PhotoCaptureRow shots={shots} onShot={(a, id) => setShots({ ...shots, [a]: id })} />
+          <div style={{ fontSize: 10.5, color: T.dim, marginTop: 10 }}>Optional — you can add these later from the Photos section.</div>
+        </div>
+      )}
+
+      {step > 0 && (
+        <div style={{ display: "flex", gap: 8, marginTop: 24 }}>
+          <button onClick={() => setStep(step - 1)} style={{ flex: 1, padding: 15, borderRadius: 14, border: "none", background: T.tileHi, color: T.sub, fontSize: 12, fontWeight: 800, letterSpacing: 1.5, cursor: "pointer", fontFamily: "inherit" }}>BACK</button>
+          <button onClick={() => (step === 4 ? finish() : setStep(step + 1))} style={{ flex: 2, padding: 15, borderRadius: 14, border: "none", background: T.exercise, color: "#122400", fontSize: 12, fontWeight: 800, letterSpacing: 1.5, cursor: "pointer", fontFamily: "inherit" }}>
+            {step === 4 ? "FINISH — START BLOCK 1" : "NEXT →"}
+          </button>
+        </div>
+      )}
+      <div style={{ display: "flex", gap: 5, justifyContent: "center", marginTop: 18 }}>
+        {[0, 1, 2, 3, 4].map((i) => <div key={i} style={{ width: i === step ? 18 : 6, height: 6, borderRadius: 3, background: i === step ? T.exercise : T.tileHi2, transition: "width 0.25s" }} />)}
+      </div>
+    </div>
+  );
+}
+
+// ============ CHECKPOINT FLOW ============
+
+function CheckpointFlow({ data, onBack, onConfirm }) {
+  const summary = useMemo(() => computeCheckpointSummary(data), []);
+  const [step, setStep] = useState(0);
+  const [kg, setKg] = useState(data.bodyWeight[data.bodyWeight.length - 1]?.kg || 85);
+  const [waist, setWaist] = useState("");
+  const [shots, setShots] = useState({});
+  const [props, setProps] = useState(summary.proposals);
+  const [copied, setCopied] = useState(false);
+  const bs = summary.block;
+
+  const inputS = { width: "100%", boxSizing: "border-box", background: "#000", border: `1px solid ${T.hairline}`, borderRadius: 13, padding: 13, color: T.text, fontSize: 24, fontWeight: 800, fontFamily: "inherit", textAlign: "center", outline: "none" };
+
+  const doConfirm = () => {
+    const photoIds = Object.entries(shots).map(([angle, id]) => ({ id, angle, date: todayStr(), tag: `block${bs.number}` }));
+    onConfirm({
+      kg: kg > 30 && kg < 200 ? Math.round(kg * 10) / 10 : null,
+      waist: parseFloat(waist) > 40 ? Math.round(parseFloat(waist) * 10) / 10 : null,
+      photoIds,
+      acceptedDeloads: props.filter((p) => p.type === "deload_lift" && p.on),
+      summary,
+    });
+  };
+
+  return (
+    <div style={{ minHeight: "100vh", color: T.text, paddingBottom: 60 }}>
+      <div style={{ padding: "12px 14px", paddingTop: "calc(12px + env(safe-area-inset-top))", display: "flex", alignItems: "center", gap: 8, position: "sticky", top: 0, background: "rgba(0,0,0,0.85)", backdropFilter: "blur(20px)", zIndex: 10 }}>
+        <button onClick={onBack} style={{ background: "none", border: "none", color: T.sub, cursor: "pointer", padding: 4, display: "flex" }}><ArrowLeft size={20} /></button>
+        <div>
+          <div style={{ fontSize: 9, letterSpacing: 3, color: T.exercise, fontWeight: 800 }}>CHECKPOINT</div>
+          <div style={{ fontSize: 16, fontWeight: 800 }}>Block {bs.number} Review</div>
+        </div>
+      </div>
+
+      <div style={{ padding: 16 }}>
+        {step === 0 && (
+          <div style={rise(0)}>
+            <SectionTitle>Weigh-in</SectionTitle>
+            <div style={{ fontSize: 12, color: T.sub, marginBottom: 14, lineHeight: 1.5 }}>Morning weight + waist. The block gets judged on evidence, not vibes.</div>
+            <Label>WEIGHT · KG</Label>
+            <input style={{ ...inputS, margin: "8px 0 14px" }} type="number" inputMode="decimal" value={kg} onChange={(e) => setKg(parseFloat(e.target.value) || 0)} />
+            <Label>WAIST · CM (OPTIONAL)</Label>
+            <input style={{ ...inputS, margin: "8px 0 20px", fontSize: 18 }} type="number" inputMode="decimal" value={waist} onChange={(e) => setWaist(e.target.value)} placeholder="—" />
+            <button onClick={() => setStep(1)} style={{ width: "100%", padding: 15, borderRadius: 14, border: "none", background: T.exercise, color: "#122400", fontSize: 12, fontWeight: 800, letterSpacing: 1.5, cursor: "pointer", fontFamily: "inherit" }}>NEXT: PHOTOS →</button>
+          </div>
+        )}
+
+        {step === 1 && (
+          <div style={rise(0)}>
+            <SectionTitle>Progress photos</SectionTitle>
+            <div style={{ fontSize: 12, color: T.sub, marginBottom: 14, lineHeight: 1.5 }}>Same light, same pose as last time. These are the truth-tellers.</div>
+            <PhotoCaptureRow shots={shots} onShot={(a, id) => setShots({ ...shots, [a]: id })} />
+            <button onClick={() => setStep(2)} style={{ width: "100%", padding: 15, marginTop: 18, borderRadius: 14, border: "none", background: T.exercise, color: "#122400", fontSize: 12, fontWeight: 800, letterSpacing: 1.5, cursor: "pointer", fontFamily: "inherit" }}>
+              {Object.keys(shots).length ? "NEXT: THE VERDICT →" : "SKIP PHOTOS →"}
+            </button>
+          </div>
+        )}
+
+        {step === 2 && (
+          <div>
+            <div style={rise(0)}>
+              <SectionTitle>Block {bs.number} — the evidence</SectionTitle>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 7, marginBottom: 10 }}>
+                {[["SESSIONS", summary.sessions, "/16"], ["VOLUME", `${(summary.volume / 1000).toFixed(1)}k`, "KG"], ["PRs", summary.prs, "🏆"]].map(([l, v, u]) => (
+                  <div key={l} style={tile({ padding: "11px 9px", borderRadius: 16 })}>
+                    <div style={{ fontSize: 8, letterSpacing: 1.4, color: T.dim, fontWeight: 700 }}>{l}</div>
+                    <div style={{ fontSize: 19, fontWeight: 800, marginTop: 3 }}>{v}<span style={{ fontSize: 10, color: T.dim }}>{u}</span></div>
+                  </div>
+                ))}
+              </div>
+              {summary.strength.length > 0 && (
+                <div style={{ ...tile({ marginBottom: 10 }) }}>
+                  <Label>STRENGTH MOVED</Label>
+                  {summary.strength.map((s) => (
+                    <div key={s.id} style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, marginTop: 8 }}>
+                      <span style={{ color: T.sub }}>{s.name}</span>
+                      <b style={{ color: s.delta > 0 ? T.exercise : s.delta < 0 ? T.move : T.text }}>{s.delta > 0 ? "+" : ""}{s.delta}kg e1RM</b>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {summary.weightDelta != null && (
+                <div style={{ ...tile({ marginBottom: 10, padding: "12px 14px" }), fontSize: 12, color: T.sub }}>
+                  Bodyweight (7-day avg): <b style={{ color: summary.weightDelta < -0.2 ? T.exercise : T.yellow }}>{summary.weightDelta > 0 ? "+" : ""}{summary.weightDelta} kg</b> across the block
+                </div>
+              )}
+            </div>
+
+            <div style={rise(1)}>
+              <SectionTitle>My proposals — you decide</SectionTitle>
+              {props.length === 0 && <div style={{ ...tile(), fontSize: 12, color: T.sub }}>Clean block. No corrections — we go again, heavier.</div>}
+              {props.map((p, i) => (
+                <div key={p.id} onClick={() => setProps(props.map((x) => x.id === p.id ? { ...x, on: !x.on } : x))} style={{ ...tile({ padding: "12px 14px", marginBottom: 8 }), display: "flex", gap: 11, alignItems: "flex-start", cursor: "pointer", opacity: p.on ? 1 : 0.5 }}>
+                  <div style={{ width: 20, height: 20, borderRadius: 10, border: `1.5px solid ${p.on ? T.exercise : T.faint}`, background: p.on ? T.exercise : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: 1 }}>
+                    {p.on && <Check size={12} color="#122400" strokeWidth={3.5} />}
+                  </div>
+                  <div style={{ fontSize: 12, color: T.text, lineHeight: 1.5 }}>{p.text}</div>
+                </div>
+              ))}
+            </div>
+
+            <div style={{ ...tile({ marginTop: 14, marginBottom: 14, padding: "13px 14px" }), ...rise(2) }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: T.stand, display: "flex", alignItems: "center", gap: 6 }}><Copy size={13} /> Visual assessment (via Claude)</div>
+              <div style={{ fontSize: 11, color: T.sub, lineHeight: 1.55, margin: "6px 0 10px" }}>
+                I can't judge photos myself — Claude can. Copy the summary below, paste it in your Claude chat, attach today's photos, and bring the verdict back.
+              </div>
+              <button onClick={() => { navigator.clipboard?.writeText(claudeHandoffText(data, summary)).then(() => setCopied(true)); }} style={{ width: "100%", padding: 12, borderRadius: 12, border: "none", background: copied ? T.exercise : T.tileHi, color: copied ? "#122400" : T.text, fontSize: 11, fontWeight: 800, letterSpacing: 1.2, cursor: "pointer", fontFamily: "inherit" }}>
+                {copied ? "✓ COPIED — PASTE IN CLAUDE" : "COPY SUMMARY FOR CLAUDE"}
+              </button>
+            </div>
+
+            <button onClick={doConfirm} style={{ width: "100%", padding: 16, borderRadius: 15, border: "none", background: T.exercise, color: "#122400", fontSize: 13, fontWeight: 800, letterSpacing: 1.8, cursor: "pointer", fontFamily: "inherit", ...rise(3) }}>
+              CONFIRM — START BLOCK {bs.number + 1} →
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ============ PHOTOS VIEW ============
+
+function PhotosView({ data, onBack, onAddPhotos }) {
+  const [shots, setShots] = useState({});
+  const [compare, setCompare] = useState({ a: null, b: null });
+  const byDate = useMemo(() => {
+    const g = {};
+    for (const p of data.photos) { (g[p.date] = g[p.date] || []).push(p); }
+    return Object.entries(g).sort(([a], [b]) => new Date(b) - new Date(a));
+  }, [data.photos.length]);
+  const dates = byDate.map(([d]) => d);
+
+  const saveSet = () => {
+    const metas = Object.entries(shots).map(([angle, id]) => ({ id, angle, date: todayStr(), tag: "manual" }));
+    if (metas.length) { onAddPhotos(metas); setShots({}); }
+  };
+
+  return (
+    <div style={{ minHeight: "100vh", color: T.text, paddingBottom: 60 }}>
+      <div style={{ padding: "12px 14px", paddingTop: "calc(12px + env(safe-area-inset-top))", display: "flex", alignItems: "center", gap: 8, position: "sticky", top: 0, background: "rgba(0,0,0,0.85)", backdropFilter: "blur(20px)", zIndex: 10 }}>
+        <button onClick={onBack} style={{ background: "none", border: "none", color: T.sub, cursor: "pointer", padding: 4, display: "flex" }}><ArrowLeft size={20} /></button>
+        <div style={{ fontSize: 17, fontWeight: 800 }}>Progress Photos</div>
+      </div>
+
+      <div style={{ padding: 16 }}>
+        <div style={rise(0)}>
+          <SectionTitle>New set — today</SectionTitle>
+          <PhotoCaptureRow shots={shots} onShot={(a, id) => setShots({ ...shots, [a]: id })} />
+          {Object.keys(shots).length > 0 && (
+            <button onClick={saveSet} style={{ width: "100%", padding: 13, marginTop: 10, borderRadius: 13, border: "none", background: T.exercise, color: "#122400", fontSize: 11.5, fontWeight: 800, letterSpacing: 1.5, cursor: "pointer", fontFamily: "inherit" }}>SAVE TODAY'S SET</button>
+          )}
+        </div>
+
+        {dates.length >= 2 && (
+          <div style={{ marginTop: 20, ...rise(1) }}>
+            <SectionTitle>Compare</SectionTitle>
+            <div style={{ display: "flex", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
+              {dates.slice(0, 6).map((d) => (
+                <Chip key={d} active={compare.a === d || compare.b === d} onClick={() => {
+                  if (compare.a === d) setCompare({ ...compare, a: null });
+                  else if (compare.b === d) setCompare({ ...compare, b: null });
+                  else if (!compare.a) setCompare({ ...compare, a: d });
+                  else setCompare({ ...compare, b: d });
+                }}>{fmtDate(d)}</Chip>
+              ))}
+            </div>
+            {compare.a && compare.b && ANGLES.map((angle) => {
+              const pa = data.photos.find((p) => p.date === compare.a && p.angle === angle);
+              const pb = data.photos.find((p) => p.date === compare.b && p.angle === angle);
+              if (!pa && !pb) return null;
+              return (
+                <div key={angle} style={{ marginBottom: 12 }}>
+                  <Label>{angle.toUpperCase()}</Label>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 6 }}>
+                    {[pa, pb].map((p, i) => p
+                      ? <PhotoImg key={i} id={p.id} style={{ width: "100%", aspectRatio: "3/4", borderRadius: 14 }} />
+                      : <div key={i} style={{ ...tileSub({ borderRadius: 14 }), aspectRatio: "3/4", display: "flex", alignItems: "center", justifyContent: "center", color: T.faint, fontSize: 10 }}>no photo</div>)}
+                  </div>
+                </div>
+              );
+            })}
+            <div style={{ fontSize: 11, color: T.dim, lineHeight: 1.55, marginTop: 4 }}>
+              Want a real verdict? Attach both sets in your Claude chat — body-fat change, weak points, plan adjustments.
+            </div>
+          </div>
+        )}
+
+        <div style={{ marginTop: 20 }}>
+          <SectionTitle>All sets</SectionTitle>
+          {byDate.length === 0 && <div style={{ ...tile(), fontSize: 12, color: T.sub }}>No photos yet. The mirror lies day-to-day — monthly photos don't.</div>}
+          {byDate.map(([d, ps], gi) => (
+            <div key={d} style={{ ...tile({ padding: 12, marginBottom: 10 }), ...rise(Math.min(gi + 2, 8)) }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: T.sub, marginBottom: 8 }}>{fmtDate(d)} · {ps[0]?.tag === "baseline" ? "Baseline" : ps[0]?.tag?.startsWith("block") ? `Checkpoint ${ps[0].tag.replace("block", "B")}` : "Manual"}</div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
+                {ANGLES.map((a) => {
+                  const p = ps.find((x) => x.angle === a);
+                  return p ? <PhotoImg key={a} id={p.id} style={{ width: "100%", aspectRatio: "3/4", borderRadius: 12 }} /> : <div key={a} style={{ ...tileSub({ borderRadius: 12 }), aspectRatio: "3/4" }} />;
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ============ MODALS ============
 
 function CardioSheet({ open, onClose, onSave }) {
@@ -1204,7 +1625,7 @@ function WeightSheet({ open, onClose, onSave, lastEntry }) {
   );
 }
 
-function SettingsSheet({ open, onClose, data, onImport, onToggleTimer, onReset }) {
+function SettingsSheet({ open, onClose, data, onImport, onToggleTimer, onReset, onRedoSetup }) {
   const [importText, setImportText] = useState("");
   const [msg, setMsg] = useState(null);
   const fileRef = useRef(null);
@@ -1271,6 +1692,8 @@ function SettingsSheet({ open, onClose, data, onImport, onToggleTimer, onReset }
         </div>
       </div>
 
+      <button onClick={onRedoSetup} style={{ ...btn, marginBottom: 12 }}><User size={15} /> REDO COACH SETUP</button>
+      <div style={{ fontSize: 10, color: T.faint, lineHeight: 1.5, marginBottom: 12 }}>Note: progress photos live in this browser's IndexedDB and are not included in the JSON backup.</div>
       <button onClick={onReset} style={{ width: "100%", padding: 12, borderRadius: 14, border: "none", background: "rgba(250,17,79,0.12)", color: "#FF7B9C", fontSize: 11, fontWeight: 800, letterSpacing: 1.5, cursor: "pointer", fontFamily: "inherit" }}>
         RESET ALL DATA
       </button>
@@ -1339,7 +1762,10 @@ export default function App() {
       const prs = detectPRs(session, data.history);
       const completed = { ...session, id: `s_${Date.now()}`, prs };
       const idx = ROTATION.indexOf(session.workoutType);
-      persist({ ...data, currentSession: null, history: [...data.history, completed], rotationIndex: (idx + 1) % ROTATION.length });
+      // consume any coach adjustments for exercises performed this session
+      const adj = { ...(data.adjustments || {}) };
+      for (const exId of Object.keys(completed.exercises || {})) delete adj[exId];
+      persist({ ...data, adjustments: adj, currentSession: null, history: [...data.history, completed], rotationIndex: (idx + 1) % ROTATION.length });
       const vol = Math.round(sessionVolume(completed));
       setBanner(prs.length > 0
         ? `Session banked — ${sessionSets(completed)} sets, ${vol} kg. ${prs.length} PR${prs.length > 1 ? "s" : ""}: ${prs.map((p) => `${p.name} ${p.weight}kg`).join(", ")} 🏆`
@@ -1349,6 +1775,59 @@ export default function App() {
       persist({ ...data, currentSession: session });
     }
   };
+
+  // Onboarding gate: no profile yet → coach setup first
+  if (!data.profile) {
+    return (
+      <Shell>
+        <OnboardingFlow
+          onSkip={() => persist({ ...data, profile: { skipped: true, createdAt: new Date().toISOString() } })}
+          onDone={({ profile, weightKg, waist, photoIds }) => {
+            const bw = weightKg ? [...data.bodyWeight.filter((x) => x.date !== todayStr()), { date: todayStr(), kg: weightKg, ...(waist ? { waist } : {}) }] : data.bodyWeight;
+            persist({
+              ...data, profile,
+              bodyWeight: bw,
+              photos: [...data.photos, ...photoIds],
+              block: { number: 1, startDate: todayStr(), lengthWeeks: 4 },
+              coachLog: [...data.coachLog, { date: todayStr(), type: "init", text: "Coach initialised — Block 1 begins." }],
+            });
+          }} />
+      </Shell>
+    );
+  }
+
+  if (screen?.type === "photos") {
+    return (
+      <Shell>
+        <PhotosView data={data} onBack={() => setScreen(null)}
+          onAddPhotos={(metas) => persist({ ...data, photos: [...data.photos, ...metas] })} />
+      </Shell>
+    );
+  }
+  if (screen?.type === "checkpoint") {
+    return (
+      <Shell>
+        <CheckpointFlow data={data} onBack={() => setScreen(null)}
+          onConfirm={({ kg, waist, photoIds, acceptedDeloads, summary }) => {
+            const adj = { ...(data.adjustments || {}) };
+            for (const p of acceptedDeloads) adj[p.exId] = { weight: p.weight, reason: `Checkpoint reset → ${p.weight}kg. Rebuild past the stall.` };
+            const bw = kg ? [...data.bodyWeight.filter((x) => x.date !== todayStr()), { date: todayStr(), kg, ...(waist ? { waist } : {}) }] : data.bodyWeight;
+            const nextNum = (data.block?.number || 1) + 1;
+            persist({
+              ...data,
+              bodyWeight: bw,
+              photos: [...data.photos, ...photoIds],
+              adjustments: adj,
+              checkpoints: [...data.checkpoints, { date: todayStr(), block: summary.block.number, sessions: summary.sessions, volume: summary.volume, prs: summary.prs, weightDelta: summary.weightDelta, accepted: acceptedDeloads.map((p) => p.exId) }],
+              coachLog: [...data.coachLog, { date: todayStr(), type: "checkpoint", text: `Block ${summary.block.number} closed: ${summary.sessions} sessions, ${summary.prs} PRs. Block ${nextNum} begins.` }],
+              block: { number: nextNum, startDate: todayStr(), lengthWeeks: 4 },
+            });
+            setScreen(null); setTab("today");
+            setBanner(`Block ${summary.block.number} closed. Block ${nextNum} starts now — first session sets the tone. 🏁`);
+          }} />
+      </Shell>
+    );
+  }
 
   if (screen?.type === "workout") {
     return (
@@ -1372,7 +1851,9 @@ export default function App() {
           <TodayView data={data} banner={banner} onDismissBanner={() => setBanner(null)}
             onStartWorkout={(wt) => setScreen({ type: "workout", workoutType: wt })}
             onLogCardio={() => setShowCardio(true)} onLogWeight={() => setShowWeight(true)}
-            onOpenSettings={() => setShowSettings(true)} onOpenAwards={() => setShowAwards(true)} />
+            onOpenSettings={() => setShowSettings(true)} onOpenAwards={() => setShowAwards(true)}
+            onOpenPhotos={() => setScreen({ type: "photos" })} onOpenCheckpoint={() => setScreen({ type: "checkpoint" })}
+            onFinishSetup={() => persist({ ...data, profile: null })} />
         )}
         {tab === "train" && <TrainView data={data} onStartWorkout={(wt) => setScreen({ type: "workout", workoutType: wt })} />}
         {tab === "insights" && <InsightsView data={data} />}
@@ -1385,6 +1866,7 @@ export default function App() {
       <WeightSheet open={showWeight} onClose={() => setShowWeight(false)} lastEntry={data.bodyWeight[data.bodyWeight.length - 1]}
         onSave={(w) => persist({ ...data, bodyWeight: [...data.bodyWeight.filter((x) => x.date !== w.date), w] })} />
       <SettingsSheet open={showSettings} onClose={() => setShowSettings(false)} data={data}
+        onRedoSetup={() => { setShowSettings(false); persist({ ...data, profile: null }); }}
         onImport={(d) => persist(d)}
         onToggleTimer={() => persist({ ...data, settings: { ...data.settings, restTimer: data.settings?.restTimer === false } })}
         onReset={() => { if (confirm("Delete ALL workout history, weigh-ins and cardio? This cannot be undone.") && confirm("Really sure? Export a backup first if in doubt.")) { localStorage.removeItem(STORAGE_KEY); location.reload(); } }} />
