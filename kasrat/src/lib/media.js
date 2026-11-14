@@ -16,14 +16,45 @@ export function beep(freq = 880, ms = 120) {
   } catch { /* audio not available */ }
 }
 
+// Phones ship several voices per language; the default is often the most robotic.
+// Prefer network/"natural" voices, then Google's, and an Indian accent for English.
+let voiceCache = {}
+function scoreVoice(v, lang) {
+  const name = v.name.toLowerCase()
+  const code = v.lang.replace('_', '-').toLowerCase()
+  let s = 0
+  if (lang === 'hi') { if (!code.startsWith('hi')) return -1 } else {
+    if (!code.startsWith('en')) return -1
+    s += code === 'en-in' ? 6 : code === 'en-gb' ? 2 : 0
+  }
+  if (/natural|neural|wavenet|enhanced|premium|online/.test(name)) s += 5
+  if (/google/.test(name)) s += 3
+  if (!v.localService) s += 2
+  if (/female|woman|heera|swara|lekha|neerja|kalpana/.test(name)) s += 1
+  return s
+}
+function pickVoice(lang) {
+  if (voiceCache[lang]) return voiceCache[lang]
+  const voices = window.speechSynthesis.getVoices()
+  let best = null
+  let top = -1
+  for (const v of voices) { const sc = scoreVoice(v, lang); if (sc > top) { top = sc; best = v } }
+  if (best) voiceCache[lang] = best
+  return best
+}
+try { window.speechSynthesis?.addEventListener?.('voiceschanged', () => { voiceCache = {} }) } catch { /* ignore */ }
+
 export function speak(text, lang) {
   try {
     const synth = window.speechSynthesis
     if (!synth) return
     synth.cancel()
     const u = new SpeechSynthesisUtterance(text)
-    u.lang = lang === 'hi' ? 'hi-IN' : 'en-IN'
-    u.rate = 0.95
+    const v = pickVoice(lang)
+    if (v) u.voice = v
+    u.lang = v ? v.lang : lang === 'hi' ? 'hi-IN' : 'en-IN'
+    u.rate = 1
+    u.pitch = 1
     synth.speak(u)
   } catch { /* speech not available */ }
 }

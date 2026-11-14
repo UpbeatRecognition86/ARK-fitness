@@ -7,6 +7,7 @@ import { APP, PLANS, PAYMENTS } from '../config.js'
 import { purchase } from '../lib/payments.js'
 import { LIMITS } from './Onboarding.jsx'
 import Glyph from '../components/Glyph.jsx'
+import Sheet from '../components/Sheet.jsx'
 import { weeklyMinutes } from '../lib/coach.js'
 import { PEAKS } from '../data/journeys.js'
 
@@ -158,8 +159,7 @@ function EditSheet({ onClose }) {
     onClose()
   }
   return (
-    <div className="sheet-bg" onClick={onClose}>
-      <div className="sheet" onClick={(e) => e.stopPropagation()}>
+    <Sheet onClose={onClose}>
         <input className="input" value={d.name} maxLength={24} placeholder={t('namePh')} onChange={(e) => set({ name: e.target.value })} />
         <h3>{t('levelTitle')}</h3>
         <div className="pills">{['beginner', 'inter', 'advanced'].map((l) => <button key={l} className={`pill ${d.level === l ? 'on' : ''}`} onClick={() => set({ level: l })}>{t('level_' + l)}</button>)}</div>
@@ -177,8 +177,7 @@ function EditSheet({ onClose }) {
         </div>
         <button className="btn" onClick={save}>{t('save')}</button>
         <button className="btn ghost" onClick={onClose}>{t('cancel')}</button>
-      </div>
-    </div>
+    </Sheet>
   )
 }
 

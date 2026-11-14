@@ -6,6 +6,7 @@ import { EX } from '../data/exercises.js'
 import { buildSession } from '../lib/plan.js'
 import { beep, speak, stopSpeaking, keepAwake, buzz } from '../lib/media.js'
 import Figure from '../components/Figure.jsx'
+import Sheet from '../components/Sheet.jsx'
 
 export function Amount({ step }) {
   const { t } = useT()
@@ -16,15 +17,13 @@ export function Amount({ step }) {
 export function ExerciseSheet({ ex, onClose }) {
   const { t, L } = useT()
   return (
-    <div className="sheet-bg" onClick={onClose}>
-      <div className="sheet" onClick={(e) => e.stopPropagation()}>
+    <Sheet onClose={onClose}>
         <div className="figbox xl" style={{ alignSelf: 'center' }}><Figure pose={ex.pose} animate size={190} /></div>
         <h2>{L(ex.name)}</h2>
         <span className="chip plain" style={{ alignSelf: 'flex-start' }}>{t('area_' + ex.area)}</span>
         <div><h3 className="muted">{t('howTo')}</h3><p>{L(ex.cue)}</p></div>
         <button className="btn ghost" onClick={onClose}>{t('close')}</button>
-      </div>
-    </div>
+    </Sheet>
   )
 }
 
@@ -252,14 +251,12 @@ function Player({ session, onExit, onFinish }) {
       </div>
 
       {asking && (
-        <div className="sheet-bg">
-          <div className="sheet">
+        <Sheet onClose={() => setAsking(false)}>
             <h2>{t('quit')}</h2>
             <p className="muted">{t('quitSub')}</p>
             <button className="btn" onClick={() => setAsking(false)}>{t('keepGoing')}</button>
             <button className="btn ghost" onClick={() => { stopSpeaking(); onExit() }}>{t('endIt')}</button>
-          </div>
-        </div>
+        </Sheet>
       )}
     </div>
   )

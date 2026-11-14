@@ -66,7 +66,7 @@ b { font-weight: 600; }
 .eyebrow { font-size: 0.74rem; font-weight: 600; letter-spacing: 0.07em; text-transform: uppercase; color: var(--muted); }
 
 .app { max-width: 480px; margin: 0 auto; min-height: 100dvh; display: flex; flex-direction: column; }
-.screen { flex: 1; padding: 20px 16px calc(96px + env(safe-area-inset-bottom)); display: flex; flex-direction: column; gap: 16px; animation: rise 0.25s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+.screen { flex: 1; padding: 20px 16px calc(96px + env(safe-area-inset-bottom)); display: flex; flex-direction: column; gap: 16px; animation: rise 0.25s cubic-bezier(0.2, 0.7, 0.2, 1) backwards; }
 .screen.plain { padding-bottom: calc(24px + env(safe-area-inset-bottom)); }
 @keyframes rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 @keyframes pop { 0% { transform: scale(0.6); opacity: 0; } 70% { transform: scale(1.06); } 100% { transform: scale(1); opacity: 1; } }
@@ -204,7 +204,7 @@ label.field { display: flex; flex-direction: column; gap: 6px; font-weight: 600;
 .player { position: fixed; inset: 0; background: var(--bg); z-index: 20; display: flex; justify-content: center; transition: background 0.35s; }
 .player.rest { background: var(--ok-soft); }
 .player-in { width: 100%; max-width: 480px; display: flex; flex-direction: column; padding: calc(12px + env(safe-area-inset-top)) 16px calc(16px + env(safe-area-inset-bottom)); gap: 10px; }
-.stage { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; text-align: center; animation: rise 0.3s both; }
+.stage { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; text-align: center; animation: rise 0.3s backwards; }
 .ex-name { font-size: 1.6rem; }
 .cue { max-width: 350px; font-size: 0.96rem; }
 .count { font-size: 3.2rem; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; letter-spacing: -0.03em; }
