@@ -3,7 +3,7 @@ import { Home as HomeIcon, Map as MapIcon, Compass, BarChart3, User } from 'luci
 import { useStore, activeProfile, stats, dayStr } from './lib/store.jsx'
 import { useT } from './lib/i18n.js'
 import { JMAP, QMAP, PMAP } from './data/journeys.js'
-import { totalSessions } from './lib/plan.js'
+import { totalSessions, daysPerWeek } from './lib/plan.js'
 import Onboarding from './screens/Onboarding.jsx'
 import Session from './screens/Session.jsx'
 import { Home, Journeys, JourneyDetail, Explore, Done } from './screens/Main.jsx'
@@ -56,6 +56,8 @@ export default function App() {
       p.points += points
       if (isJourney && (p.progress[tpl.id] || 0) === index) {
         p.progress[tpl.id] = index + 1
+        const dpw = daysPerWeek(tpl, p)
+        if ((index + 1) % dpw === 0) p.history[p.history.length - 1].weekDone = (index + 1) / dpw
         if (index + 1 >= totalSessions(tpl, p) && !p.completed.includes(tpl.id)) p.completed.push(tpl.id)
       }
     })

@@ -6,6 +6,8 @@ import { JMAP, QMAP, PMAP } from '../data/journeys.js'
 import { APP, PLANS, PAYMENTS } from '../config.js'
 import { purchase } from '../lib/payments.js'
 import { LIMITS } from './Onboarding.jsx'
+import { weeklyMinutes } from '../lib/coach.js'
+import { PEAKS } from '../data/journeys.js'
 
 export const clock = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
 
@@ -41,6 +43,9 @@ export function Progress() {
   const latest = p.weights.length ? p.weights[p.weights.length - 1].kg : p.kg
   const bmi = bmiInfo(latest, p.cm)
   const r = rank(p.points)
+  const wk = weeklyMinutes(p, 8)
+  const wkMax = Math.max(30, ...wk.map((w) => w.minutes))
+  const bests = PEAKS.filter((x) => (p.pbs || {})[x.id])
   const logWeight = () => {
     const v = Number(kg)
     if (!(v >= 10 && v <= 300)) return
@@ -61,6 +66,28 @@ export function Progress() {
         <div className="tile"><b>{st.kcal}</b><span className="muted small">{t('calories')}</span></div>
         <div className="tile"><b>{st.best}</b><span className="muted small">{t('bestStreak')}</span></div>
       </div>
+
+      <div className="card stack">
+        <div className="row between"><h3>{t('weeklyMin')}</h3>{wk[7].minutes > wk[6].minutes && wk[6].minutes > 0 && <span className="chip ok">+{wk[7].minutes - wk[6].minutes} {t('min')}</span>}</div>
+        <div className="bars">
+          {wk.map((w, n) => (
+            <div key={w.start} className={`${n === 7 ? 'now' : ''} ${w.minutes ? 'has' : ''}`}>
+              <span>{w.minutes || ''}</span>
+              <i style={{ height: `${(w.minutes / wkMax) * 78}%` }} />
+              <span>{w.start.slice(8)}/{w.start.slice(5, 7)}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {bests.length > 0 && (
+        <div className="card">
+          <h3>🏔️ {t('yourBests')}</h3>
+          <div className="list">
+            {bests.map((x) => <div className="li" key={x.id}><span className="grow"><b>{L(x.name)}</b> <span className="chip plain">{t('lvl_' + x.lvl)}</span></span><b style={{ fontVariantNumeric: 'tabular-nums' }}>{clock(p.pbs[x.id])}</b></div>)}
+          </div>
+        </div>
+      )}
 
       <div className="card stack">
         <h3>{t('last12')}</h3>

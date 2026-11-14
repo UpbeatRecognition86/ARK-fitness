@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ArrowLeft, Play, Lock, Check, Flame, Star, Clock, ChevronRight, Search, Share2, Crown } from 'lucide-react'
+import { ArrowLeft, Play, Lock, Check, Flame, Star, Clock, ChevronRight, Search, Share2, Crown, Sparkles, TrendingUp } from 'lucide-react'
 import { useStore, activeProfile, stats, canPlay, isPlus, dayStr, addDays, weekStart, rank } from '../lib/store.jsx'
 import { useT, TIPS } from '../lib/i18n.js'
 import { JOURNEYS, JMAP, QUICK, PEAKS, recommend } from '../data/journeys.js'
@@ -8,6 +8,9 @@ import { buildSession, totalSessions, daysPerWeek } from '../lib/plan.js'
 import { clock } from './Me.jsx'
 import { APP } from '../config.js'
 import Figure from '../components/Figure.jsx'
+import Confetti from '../components/Confetti.jsx'
+import { ExerciseSheet } from './Session.jsx'
+import { coachMessage, weeklyMinutes } from '../lib/coach.js'
 
 const DOW = { en: ['M', 'T', 'W', 'T', 'F', 'S', 'S'], hi: ['सो', 'मं', 'बु', 'गु', 'शु', 'श', 'र'] }
 
@@ -82,6 +85,11 @@ export function Home({ nav }) {
   const r = rank(p.points)
   const tip = TIPS[Math.floor(Date.now() / 864e5) % TIPS.length]
   const setWater = (n) => update((s) => { activeProfile(s).water[today] = water === n ? n - 1 : n })
+  const dpw = j ? daysPerWeek(j, p) : 3
+  const lastH = p.history[p.history.length - 1]
+  const weekDone = !!(j && !finished && idx > 0 && idx % dpw === 0 && lastH?.weekDone && lastH.date >= ws)
+  const msg = coachMessage(p, { finished, weekDone, dpw, left })
+  const pct = j ? Math.round((Math.min(idx, totalSessions(j, p)) / totalSessions(j, p)) * 100) : 0
 
   return (
     <div className="screen">
@@ -94,23 +102,28 @@ export function Home({ nav }) {
         <button className="avatar" onClick={() => nav.tab('profile')} aria-label={t('tab_profile')}>{p.name[0]?.toUpperCase()}</button>
       </div>
 
+      <div className="coach">
+        <span className="coach-face"><Sparkles size={20} /></span>
+        <div className="coach-bubble"><div className="eyebrow">{t('coach')}</div>{t(msg.key, msg.vars)}</div>
+      </div>
+
       {j && (
-        <div className="hero" style={{ background: j.color }}>
+        <div className="hero" style={{ background: j.color, '--hero-shadow': j.color }}>
           <span className="big-emoji">{j.emoji}</span>
           <div>
-            <div className="muted small">{finished ? L(j.name) : `${t('today')} · ${L(j.name)}`}</div>
-            {session && <h2 style={{ fontSize: '1.4rem' }}>{L(session.title)}</h2>}
-            {session && <div className="muted small">{t('coachWeek', { w: session.week })} · {t('weekLeft', { n: left })} · {session.minutes} {t('min')} · ~{session.kcal} {t('kcal')}</div>}
+            <div className="eyebrow">{finished ? L(j.name) : `${st.days.has(today) ? t('nextUp') : t('today')} · ${L(j.name)}`}</div>
+            {session && <h2>{L(session.title)}</h2>}
+            {session && <div className="hero-meta"><span><Clock size={15} /> {session.minutes} {t('min')}</span><span><Flame size={15} /> ~{session.kcal} {t('kcal')}</span><span>{t('coachWeek', { w: session.week })}</span></div>}
             {finished && <h2>{t('journeyDone')} 🎉</h2>}
           </div>
-          {st.days.has(today) && !finished && <div className="small">✅ {t('doneToday')}</div>}
+          {session && <div><div className="bar"><i style={{ width: `${Math.max(3, pct)}%` }} /></div><div className="muted small" style={{ marginTop: 5 }}>{t('journeyProgress', { n: pct })}</div></div>}
           {locked && <div className="small">{t('week1Done')}</div>}
           {finished ? (
             <button className="btn" onClick={() => nav.tab('journeys')}>{t('chooseJourney')}</button>
           ) : locked ? (
             <button className="btn" onClick={() => nav.go('paywall')}><Crown size={18} /> {t('unlockPlus')}</button>
           ) : (
-            <button className="btn" onClick={() => nav.go('session', { jid: j.id, idx })}><Play size={18} /> {t('startWorkout')}</button>
+            <button className="btn lg" onClick={() => nav.go('session', { jid: j.id, idx })}><Play size={20} fill="currentColor" /> {t('startWorkout')}</button>
           )}
         </div>
       )}
@@ -300,17 +313,7 @@ export function Explore({ nav }) {
         {list.length === 0 && <p className="muted center" style={{ padding: 16 }}>—</p>}
       </div></div>
 
-      {open && (
-        <div className="sheet-bg" onClick={() => setOpen(null)}>
-          <div className="sheet" onClick={(e) => e.stopPropagation()}>
-            <div className="figbox" style={{ alignSelf: 'center', borderRadius: 24 }}><Figure pose={open.pose} animate size={180} /></div>
-            <h2>{L(open.name)}</h2>
-            <span className="chip plain" style={{ alignSelf: 'flex-start' }}>{t('area_' + open.area)}</span>
-            <div><h3 className="muted">{t('howTo')}</h3><p>{L(open.cue)}</p></div>
-            <button className="btn ghost" onClick={() => setOpen(null)}>{t('close')}</button>
-          </div>
-        </div>
-      )}
+      {open && <ExerciseSheet ex={open} onClose={() => setOpen(null)} />}
     </div>
   )
 }
@@ -331,9 +334,13 @@ export function Done({ hid, nav }) {
     pp.difficulty = Math.min(1.6, Math.max(0.6, (pp.difficulty || 1) * mult))
   })
   const text = t('shareText', { w: L(h.title), app: APP.name, m: h.minutes, k: h.kcal })
+  const r = rank(p.points)
+  const rankUp = r.index > rank(p.points - h.points).index
+  const wk = weeklyMinutes(p, 2)
   return (
     <div className="screen plain center">
-      <div style={{ fontSize: '4rem', marginTop: '4vh' }}>🎉</div>
+      <Confetti />
+      <div className="trophy" style={{ marginTop: '3vh' }}>{h.pb ? '🏆' : h.weekDone ? '🏅' : '🎉'}</div>
       <h1>{t('shabash')}</h1>
       <p className="muted">{t('workoutDone')} · {L(h.title)}</p>
       <div className="tiles" style={{ gridTemplateColumns: '1fr 1fr 1fr', textAlign: 'left' }}>
@@ -342,7 +349,16 @@ export function Done({ hid, nav }) {
         <div className="tile"><Star size={18} color="var(--gold)" /><b>+{h.points}</b><span className="muted small">{t('points')}</span></div>
       </div>
       {h.pb && <div className="chip gold" style={{ alignSelf: 'center', fontSize: '0.95rem', padding: '6px 14px' }}>🏆 {t('newPb')}</div>}
-      <div className="chip" style={{ alignSelf: 'center' }}><Flame size={13} /> {st.streak} · {t('streak')}</div>
+      <div className="row wrap" style={{ justifyContent: 'center' }}>
+        <span className="chip"><Flame size={13} /> {st.streak} · {t('streak')}</span>
+        {rankUp && <span className="chip gold"><Star size={13} /> {t('rankUp', { r: L(r) })}</span>}
+      </div>
+      {h.weekDone && (
+        <div className="note ok" style={{ textAlign: 'left' }}>
+          <b><TrendingUp size={15} style={{ verticalAlign: '-2px' }} /> {t('weekRecap', { w: h.weekDone })}</b><br />
+          {t('weekRecapSub', { s: wk[1].sessions, m: wk[1].minutes })}{wk[1].minutes > wk[0].minutes && wk[0].minutes > 0 ? ` · ${t('vsLast', { n: wk[1].minutes - wk[0].minutes })}` : ''}
+        </div>
+      )}
       <div className="card stack">
         <h3>{t('howFelt')}</h3>
         <div className="row">
@@ -352,11 +368,11 @@ export function Done({ hid, nav }) {
             </button>
           ))}
         </div>
-        <p className="muted small">{t('feltNote')}</p>
+        <p className="muted small">{h.felt ? t(h.felt === 'easy' ? 'nextHarder' : h.felt === 'hard' ? 'nextEasier' : 'nextSame') : t('feltNote')}</p>
       </div>
       <div className="spacer" />
       <a className="btn wa" href={`https://wa.me/?text=${encodeURIComponent(text)}`} target="_blank" rel="noreferrer" style={{ textDecoration: 'none' }}><Share2 size={18} /> {t('share')}</a>
-      <button className="btn ghost" onClick={nav.back}>{t('continue')}</button>
+      <button className="btn" onClick={nav.back}>{t('continue')}</button>
     </div>
   )
 }

@@ -98,14 +98,22 @@ export default function Figure({ pose, animate = false, size = 96, speed = 1 }) 
   }, [animate, pose, speed])
 
   const j = mix(full(frames[0]), full(frames[1]), t)
-  const line = (...pts) => pts.map((p, i) => `${i ? 'L' : 'M'}${p[0].toFixed(1)} ${p[1].toFixed(1)}`).join('')
+  const d = (...pts) => pts.map((p, i) => `${i ? 'L' : 'M'}${p[0].toFixed(1)} ${p[1].toFixed(1)}`).join('')
+  // Neck point: a little way from the shoulder toward the head, so the head sits naturally.
+  const neck = [j.s[0] + (j.h[0] - j.s[0]) * 0.35, j.s[1] + (j.h[1] - j.s[1]) * 0.35]
+  const lowest = Math.max(j.f[1], j.f2[1], j.p[1], j.w[1], j.k[1])
+  const cx = (j.p[0] + j.s[0] + j.f[0] + j.f2[0]) / 4
+  const spread = Math.max(14, Math.abs(j.f[0] - j.s[0]) * 0.6 + Math.abs(j.f2[0] - j.f[0]) * 0.4 + 12)
   return (
     <svg viewBox="0 0 100 100" width={size} height={size} className="figure" aria-hidden="true">
-      <path d="M6 92H94" className="fig-ground" />
+      <ellipse cx={cx} cy="92.5" rx={spread} ry="2.6" className="fig-shadow" style={{ opacity: 0.1 + 0.16 * Math.min(1, lowest / 90) }} />
       {PROPS[pose] && <path d={PROPS[pose]} className="fig-prop" />}
-      <path d={line(j.s, j.e2, j.w2) + line(j.p, j.k2, j.f2)} className="fig-far" />
-      <path d={line(j.s, j.p) + line(j.s, j.e, j.w) + line(j.p, j.k, j.f)} className="fig-near" />
-      <circle cx={j.h[0]} cy={j.h[1]} r="7" className="fig-head" />
+      <path d={d(j.s, j.e2, j.w2)} className="fig-far fig-arm" />
+      <path d={d(j.p, j.k2, j.f2)} className="fig-far fig-leg" />
+      <path d={d(neck, j.s, j.p)} className="fig-torso" />
+      <path d={d(j.p, j.k, j.f)} className="fig-near fig-leg" />
+      <path d={d(j.s, j.e, j.w)} className="fig-near fig-arm" />
+      <circle cx={j.h[0]} cy={j.h[1]} r="6.6" className="fig-head" />
     </svg>
   )
 }
