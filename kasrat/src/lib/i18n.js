@@ -76,6 +76,9 @@ const S = {
   tab_profile: ['Profile', 'प्रोफ़ाइल'],
 
   // home
+  coachThisWeek: ['This week with your Coach', 'इस हफ़्ते आपके कोच के साथ'],
+  coachRest: ['Spread these across the week. Rest or walk on the other days — rest is when you get stronger.', 'इन्हें पूरे हफ़्ते में बाँट लें। बाक़ी दिन आराम करें या टहलें — आराम से ही ताक़त बढ़ती है।'],
+  todayTag: ['Today', 'आज'],
   namaste: ['Namaste', 'नमस्ते'],
   today: ["Today's workout", 'आज की कसरत'],
   weekDay: ['Week {w} · Day {d}', 'हफ़्ता {w} · दिन {d}'],

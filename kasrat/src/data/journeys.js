@@ -147,6 +147,8 @@ export const PEAKS = [
   { id: 'vindhya', lvl: 2, premium: true, rounds: 5, name: { en: 'Vindhya', hi: 'विंध्य' }, items: [['jump_squat', 10], ['pushup', 10], ['leg_raise', 10], ['superman', 12]] },
   { id: 'nandadevi', lvl: 3, premium: true, rounds: 5, name: { en: 'Nanda Devi', hi: 'नंदा देवी' }, items: [['hindu_squat', 25], ['hindu_pushup', 12], ['squat_thrust', 10], ['leg_raise', 15]] },
   { id: 'kanchenjunga', lvl: 3, premium: true, rounds: 6, name: { en: 'Kanchenjunga', hi: 'कंचनजंगा' }, items: [['squat_thrust', 10], ['pushup', 15], ['jump_squat', 15], ['crunch', 25], ['lunge', 20]] },
+  { id: 'satpura', lvl: 1, premium: false, rounds: 3, name: { en: 'Satpura', hi: 'सतपुड़ा' }, items: [['step_jacks', 20], ['wall_pushup', 12], ['glute_bridge', 15], ['calf_raise', 20]] },
+  { id: 'girnar', lvl: 2, premium: true, rounds: 5, name: { en: 'Girnar', hi: 'गिरनार' }, items: [['lunge', 20], ['knee_pushup', 12], ['mountain_climbers', 20], ['superman', 15]] },
 ].map((p) => ({ ...p, emoji: '🏔️', fixed: true, rest: 0, warm: [], cool: [] }))
 export const PMAP = Object.fromEntries(PEAKS.map((p) => [p.id, p]))
 

@@ -26,6 +26,45 @@ export function QuickCard({ q, nav, wide }) {
   )
 }
 
+function CoachWeek({ j, idx, nav }) {
+  const { state } = useStore()
+  const { t, L } = useT()
+  const p = activeProfile(state)
+  const dpw = daysPerWeek(j, p)
+  const w = Math.floor(idx / dpw)
+  const rows = Array.from({ length: dpw }, (_, d) => {
+    const n = w * dpw + d
+    if (n >= totalSessions(j, p)) return null
+    const s = buildSession(j, n, p)
+    const done = n < idx
+    const todayOne = n === idx
+    const locked = !canPlay(state, j, n)
+    return { n, s, done, todayOne, locked, d }
+  }).filter(Boolean)
+  const open = (row) => {
+    if (row.n > idx) return
+    if (row.locked) return nav.go('paywall')
+    nav.go('session', { jid: j.id, idx: row.n })
+  }
+  return (
+    <div className="card">
+      <div className="row between"><h3>{t('coachThisWeek')}</h3><span className="chip plain">{t('coachWeek', { w: w + 1 })}</span></div>
+      <div className="list">
+        {rows.map((row) => (
+          <button className={`li ${row.n > idx && !row.todayOne ? 'off' : ''}`} key={row.n} onClick={() => open(row)}>
+            <span className={`num ${row.done ? 'done' : row.todayOne ? 'next' : ''}`}>
+              {row.done ? <Check size={16} /> : row.locked ? <Lock size={14} /> : row.todayOne ? <Play size={14} /> : row.d + 1}
+            </span>
+            <span className="grow"><b>{L(row.s.title)}</b><span className="muted small" style={{ display: 'block' }}>{row.s.minutes} {t('min')} · ~{row.s.kcal} {t('kcal')}{row.todayOne ? ` · ${t('todayTag')}` : ''}</span></span>
+            {row.n <= idx && <ChevronRight size={18} className="muted" />}
+          </button>
+        ))}
+      </div>
+      <p className="muted small" style={{ marginTop: 10 }}>{t('coachRest')}</p>
+    </div>
+  )
+}
+
 export function Home({ nav }) {
   const { state, update } = useStore()
   const { t, L, lang } = useT()
@@ -75,6 +114,8 @@ export function Home({ nav }) {
           )}
         </div>
       )}
+
+      {j && !finished && <CoachWeek j={j} idx={idx} nav={nav} />}
 
       <div className="card stack">
         <div className="row between"><h3>{t('thisWeek')}</h3><span className="muted small">{t('weekGoal', { n: Math.min(st.weekCount, p.days), g: p.days })}</span></div>
