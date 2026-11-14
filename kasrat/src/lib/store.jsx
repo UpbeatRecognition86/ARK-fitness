@@ -94,14 +94,14 @@ export function rank(points) {
 export function badges(p) {
   const st = stats(p)
   return [
-    { id: 'first', emoji: '🎯', en: 'First workout', hi: 'पहली कसरत', got: st.workouts >= 1 },
-    { id: 's3', emoji: '🔥', en: '3-day streak', hi: '3 दिन लगातार', got: st.best >= 3 },
-    { id: 's7', emoji: '🏅', en: '7-day streak', hi: '7 दिन लगातार', got: st.best >= 7 },
-    { id: 'w10', emoji: '💪', en: '10 workouts', hi: '10 कसरतें', got: st.workouts >= 10 },
-    { id: 'w25', emoji: '🏆', en: '25 workouts', hi: '25 कसरतें', got: st.workouts >= 25 },
-    { id: 'm100', emoji: '⏱️', en: '100 minutes', hi: '100 मिनट', got: st.minutes >= 100 },
-    { id: 'pb', emoji: '🏔️', en: 'First peak climbed', hi: 'पहली चोटी फ़तह', got: Object.keys(p.pbs || {}).length >= 1 },
-    { id: 'j1', emoji: '👑', en: 'Journey complete', hi: 'यात्रा पूरी', got: (p.completed || []).length >= 1 },
+    { id: 'first', icon: 'target', en: 'First workout', hi: 'पहली कसरत', got: st.workouts >= 1 },
+    { id: 's3', icon: 'flame', en: '3-day streak', hi: '3 दिन लगातार', got: st.best >= 3 },
+    { id: 's7', icon: 'medal', en: '7-day streak', hi: '7 दिन लगातार', got: st.best >= 7 },
+    { id: 'w10', icon: 'dumbbell', en: '10 workouts', hi: '10 कसरतें', got: st.workouts >= 10 },
+    { id: 'w25', icon: 'trophy', en: '25 workouts', hi: '25 कसरतें', got: st.workouts >= 25 },
+    { id: 'm100', icon: 'timer', en: '100 minutes', hi: '100 मिनट', got: st.minutes >= 100 },
+    { id: 'pb', icon: 'mountain', en: 'First peak climbed', hi: 'पहली चोटी फ़तह', got: Object.keys(p.pbs || {}).length >= 1 },
+    { id: 'j1', icon: 'crown', en: 'Journey complete', hi: 'यात्रा पूरी', got: (p.completed || []).length >= 1 },
   ]
 }
 

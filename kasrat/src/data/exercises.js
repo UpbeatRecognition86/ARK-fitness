@@ -3,12 +3,16 @@
 // avoid: limitation ids for which this move is swapped for `alt`.
 const AREA_MET = { cardio: 7, legs: 5, push: 5, back: 4, core: 4, yoga: 3, mobility: 2.5, balance: 2.5, walk: 4.3, breath: 1.5 }
 
+// Moves done one side at a time: the player calls "switch sides" at the halfway point.
+const SIDES = ['side_bend', 'ankle_circles', 'lunge', 'side_leg_raise', 'vrikshasana', 'single_leg_stand', 'langdi', 'seated_leg_ext']
+
 const list = []
 function ex(id, pose, en, hi, cueEn, cueHi, type, base, area, o = {}) {
   list.push({
     id, pose, name: { en, hi }, cue: { en: cueEn, hi: cueHi }, type, base, area,
     lvl: o.lvl || 1, impact: o.impact || 'low', avoid: o.avoid || [], alt: o.alt || null,
     floor: !!o.floor, spr: o.spr || 3, met: o.met || AREA_MET[area], equip: o.equip || 'none',
+    sides: SIDES.includes(id),
   })
 }
 

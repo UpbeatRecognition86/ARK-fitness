@@ -15,7 +15,11 @@ of the personal ARK tracker in the repo root.
   real, measurable progress. Personal best stored per peak.
 - Moves are swapped automatically for knee, back, shoulder pain, "no jumping", or difficulty
   getting on the floor
-- **Guided player** — animated figure, timers, rest screens, spoken coaching in Hindi or English
+- **Guided player** — animated figure, ring timer, halfway and switch-sides cues, vibration, rest
+  screens, spoken coaching in Hindi or English
+- **Session options** — "Short on time" trims any session; "Quiet mode" removes jumping for flats
+  and late nights. Swapped moves are labelled so the adaptation is visible
+- **Coach messages** — the Coach explains what it changed and why (after feedback, a gap, a streak)
 - **Family profiles**, streaks, points and ranks, badges, weight log, BMI with Indian cut-offs,
   water tracker, WhatsApp sharing
 - **Freemium paywall** — 3 free journeys, free Peaks, week 1 of every other journey free, Plus at ₹99/month,

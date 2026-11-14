@@ -35,3 +35,7 @@ export function stopSpeaking() {
 export async function keepAwake() {
   try { return await navigator.wakeLock?.request('screen') } catch { return null }
 }
+
+export function buzz(pattern) {
+  try { navigator.vibrate?.(pattern) } catch { /* not supported */ }
+}

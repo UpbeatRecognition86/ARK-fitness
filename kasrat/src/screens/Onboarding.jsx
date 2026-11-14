@@ -4,16 +4,17 @@ import { useStore, newProfile, dayStr } from '../lib/store.jsx'
 import { useT, LANGS } from '../lib/i18n.js'
 import { JOURNEYS, JMAP, recommend } from '../data/journeys.js'
 import { APP } from '../config.js'
+import Glyph from '../components/Glyph.jsx'
 
-const GOALS = [['lose', '🔥'], ['strong', '💪'], ['active', '🏃'], ['flex', '🧘']]
-const LEVELS = [['beginner', '🌱'], ['inter', '🌿'], ['advanced', '🌳']]
+const GOALS = [['lose', 'flame'], ['strong', 'dumbbell'], ['active', 'activity'], ['flex', 'wind']]
+const LEVELS = [['beginner', 'sprout'], ['inter', 'leaf'], ['advanced', 'tree']]
 export const LIMITS = ['knee', 'back', 'shoulder', 'impact', 'floor']
 
 export function JourneyOption({ j, on, onClick, badge }) {
   const { t, L } = useT()
   return (
     <button className={`opt ${on ? 'on' : ''}`} onClick={onClick}>
-      <span className="jbadge" style={{ background: j.color + '22' }}>{j.emoji}</span>
+      <span className="jbadge" style={{ background: j.color + '1c', color: j.color }}><Glyph id={j.icon} size={26} /></span>
       <span className="grow">
         <b>{L(j.name)}</b>
         <span className="muted small">{L(j.tag)}</span>
@@ -92,7 +93,7 @@ export default function Onboarding({ add = false, onDone }) {
           <div className="stack">
             {GOALS.map(([id, emoji]) => (
               <button key={id} className={`opt ${d.goal === id ? 'on' : ''}`} onClick={() => set({ goal: id })}>
-                <span className="emoji">{emoji}</span>
+                <span className="opt-icon"><Glyph id={emoji} size={20} /></span>
                 <span className="grow"><b>{t('goal_' + id)}</b><span className="muted small">{t(`goal_${id}_d`)}</span></span>
               </button>
             ))}
@@ -106,7 +107,7 @@ export default function Onboarding({ add = false, onDone }) {
           <div className="stack">
             {LEVELS.map(([id, emoji]) => (
               <button key={id} className={`opt ${d.level === id ? 'on' : ''}`} onClick={() => set({ level: id })}>
-                <span className="emoji">{emoji}</span>
+                <span className="opt-icon"><Glyph id={emoji} size={20} /></span>
                 <span className="grow"><b>{t('level_' + id)}</b><span className="muted small">{t(`level_${id}_d`)}</span></span>
               </button>
             ))}
