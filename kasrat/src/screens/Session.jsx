@@ -38,7 +38,9 @@ export default function Session({ tpl, index, onBack, onFinish }) {
         <span className="chip plain"><Clock size={13} /> {session.minutes} {t('min')}</span>
         <span className="chip plain"><Flame size={13} /> ~{session.kcal} {t('kcal')}</span>
         {rounds > 1 && <span className="chip plain">{t('roundsN', { n: rounds })}</span>}
+        {session.forTime && <span className="chip"><Clock size={13} /> {t('forTime')}</span>}
       </div>
+      {session.forTime && <p className="note">{t('warmFirst')}</p>}
       {sections.map(([sec, steps]) => (
         <div className="card" key={sec}>
           <h3 className="muted">{t(sec)}{sec === 'main' && rounds > 1 ? ` · ${t('roundsN', { n: rounds })}` : ''}</h3>
@@ -71,6 +73,8 @@ function Player({ session, onExit, onFinish }) {
   const [paused, setPaused] = useState(false)
   const [asking, setAsking] = useState(false)
   const elapsed = useRef(0)
+  const phaseRef = useRef(phase)
+  phaseRef.current = phase
   const step = steps[i]
   const ex = EX[step.ex]
   const timed = phase !== 'work' || step.type === 'time'
@@ -112,7 +116,7 @@ function Player({ session, onExit, onFinish }) {
   useEffect(() => {
     if (paused || asking) return
     const id = setInterval(() => {
-      elapsed.current += 1
+      if (phaseRef.current !== 'ready') elapsed.current += 1
       setLeft((l) => l - 1)
     }, 1000)
     return () => clearInterval(id)
@@ -135,6 +139,7 @@ function Player({ session, onExit, onFinish }) {
             <div className="segs">{steps.map((_, n) => <i key={n} className={n < i || (n === i && phase !== 'ready') ? 'on' : ''} />)}</div>
             <div className="muted small" style={{ marginTop: 4 }}>{t(step.section)}{mainRound} · {i + 1}/{steps.length}</div>
           </div>
+          {session.forTime && <span className="chip" style={{ fontSize: '1rem', fontVariantNumeric: 'tabular-nums' }}><Clock size={15} /> {fmt(elapsed.current)}</span>}
         </div>
 
         <div className="stage">
@@ -144,7 +149,7 @@ function Player({ session, onExit, onFinish }) {
               <h1>{L(ex.name)}</h1>
               <p className="muted" style={{ maxWidth: 360 }}>{L(ex.cue)}</p>
               <div className="count">
-                {step.type === 'time' ? <>{fmt(left)}</> : <>{step.amount}<small>{t('times')}</small></>}
+                {step.type === 'time' ? <>{left >= 60 ? fmt(left) : left}</> : <>{step.amount}<small>{t('times')}</small></>}
               </div>
             </>
           ) : (
@@ -196,5 +201,5 @@ function Player({ session, onExit, onFinish }) {
 
 function fmt(s) {
   s = Math.max(0, s)
-  return s >= 60 ? `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}` : String(s)
+  return s >= 60 ? `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}` : `0:${String(s).padStart(2, '0')}`
 }

@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { Home as HomeIcon, Map as MapIcon, Compass, BarChart3, User } from 'lucide-react'
 import { useStore, activeProfile, stats, dayStr } from './lib/store.jsx'
 import { useT } from './lib/i18n.js'
-import { JMAP, QMAP } from './data/journeys.js'
+import { JMAP, QMAP, PMAP } from './data/journeys.js'
 import { totalSessions } from './lib/plan.js'
 import Onboarding from './screens/Onboarding.jsx'
 import Session from './screens/Session.jsx'
@@ -39,7 +39,8 @@ export default function App() {
 
   if (!onboarded || !profile) return <div className="app"><Onboarding onDone={() => { setOnboarded(true); swap('home') }} /></div>
 
-  const finish = (tpl, index, isJourney) => ({ seconds, session }) => {
+  const finish = (tpl, index, kind) => ({ seconds, session }) => {
+    const isJourney = kind === 'j'
     const minutes = Math.max(1, Math.round(seconds / 60))
     const kcal = Math.round(session.kcalPerSec * seconds)
     const hid = Date.now()
@@ -47,12 +48,15 @@ export default function App() {
       const p = activeProfile(s)
       const st = stats(p)
       const first = !st.days.has(dayStr())
-      const points = minutes * 10 + (first ? 20 + Math.min(st.streak, 7) * 5 : 0)
-      p.history.push({ id: hid, date: dayStr(), title: session.title, jid: isJourney ? tpl.id : null, qid: isJourney ? null : tpl.id, minutes, kcal, points })
+      p.pbs = p.pbs || {}
+      const pb = kind === 'p' && (!p.pbs[tpl.id] || seconds < p.pbs[tpl.id])
+      if (pb) p.pbs[tpl.id] = seconds
+      const points = minutes * 10 + (first ? 20 + Math.min(st.streak, 7) * 5 : 0) + (pb ? 50 : 0)
+      p.history.push({ id: hid, date: dayStr(), title: session.title, jid: isJourney ? tpl.id : null, qid: kind === 'q' ? tpl.id : null, pid: kind === 'p' ? tpl.id : null, minutes, seconds, kcal, points, pb })
       p.points += points
       if (isJourney && (p.progress[tpl.id] || 0) === index) {
         p.progress[tpl.id] = index + 1
-        if (index + 1 >= totalSessions(tpl) && !p.completed.includes(tpl.id)) p.completed.push(tpl.id)
+        if (index + 1 >= totalSessions(tpl, p) && !p.completed.includes(tpl.id)) p.completed.push(tpl.id)
       }
     })
     swap('done', { hid })
@@ -69,9 +73,10 @@ export default function App() {
     case 'done': body = <Done hid={route.hid} nav={nav} />; break
     case 'addProfile': body = <Onboarding add onDone={nav.back} />; break
     case 'session': {
-      const tpl = route.jid ? JMAP[route.jid] : QMAP[route.qid]
+      const tpl = route.jid ? JMAP[route.jid] : route.pid ? PMAP[route.pid] : QMAP[route.qid]
+      const kind = route.jid ? 'j' : route.pid ? 'p' : 'q'
       body = tpl
-        ? <Session tpl={tpl} index={route.idx || 0} onBack={nav.back} onFinish={finish(tpl, route.idx || 0, !!route.jid)} />
+        ? <Session tpl={tpl} index={route.idx || 0} onBack={nav.back} onFinish={finish(tpl, route.idx || 0, kind)} />
         : <Home nav={nav} />
       break
     }

@@ -2,10 +2,12 @@ import { useRef, useState } from 'react'
 import { ArrowLeft, Check, Crown, Plus, Trash2, Share2, Download, Upload, Pencil } from 'lucide-react'
 import { useStore, activeProfile, stats, isPlus, maxProfiles, dayStr, addDays, weekStart, badges, rank } from '../lib/store.jsx'
 import { useT, LANGS } from '../lib/i18n.js'
-import { JMAP, QMAP } from '../data/journeys.js'
+import { JMAP, QMAP, PMAP } from '../data/journeys.js'
 import { APP, PLANS, PAYMENTS } from '../config.js'
 import { purchase } from '../lib/payments.js'
 import { LIMITS } from './Onboarding.jsx'
+
+export const clock = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
 
 function bmiInfo(kg, cm) {
   if (!kg || !cm) return null
@@ -37,7 +39,7 @@ export function Progress() {
   const start = addDays(weekStart(), -77)
   const cells = Array.from({ length: 84 }, (_, n) => addDays(start, n))
   const latest = p.weights.length ? p.weights[p.weights.length - 1].kg : p.kg
-  const bmi = ['kid', 'teen'].includes(p.age) ? null : bmiInfo(latest, p.cm)
+  const bmi = bmiInfo(latest, p.cm)
   const r = rank(p.points)
   const logWeight = () => {
     const v = Number(kg)
@@ -91,11 +93,11 @@ export function Progress() {
         {p.history.length === 0 && <p className="muted small" style={{ marginTop: 8 }}>{t('noHistory')}</p>}
         <div className="list">
           {p.history.slice(-10).reverse().map((h) => {
-            const src = JMAP[h.jid] || QMAP[h.qid]
+            const src = JMAP[h.jid] || QMAP[h.qid] || PMAP[h.pid]
             return (
               <div className="li" key={h.id}>
                 <span style={{ fontSize: '1.5rem' }}>{src?.emoji || '🏃'}</span>
-                <span className="grow"><b>{L(h.title)}</b><span className="muted small" style={{ display: 'block' }}>{h.date} · {h.minutes} {t('min')} · {h.kcal} {t('kcal')}</span></span>
+                <span className="grow"><b>{L(h.title)}</b><span className="muted small" style={{ display: 'block' }}>{h.date} · {h.pid ? clock(h.seconds) : `${h.minutes} ${t('min')}`} · {h.kcal} {t('kcal')}{h.pb ? ' · 🏆' : ''}</span></span>
                 <span className="chip gold">+{h.points}</span>
               </div>
             )
@@ -202,7 +204,7 @@ export function Profile({ nav }) {
             <div className="li" key={m.id}>
               <button className="row grow" onClick={() => update((s) => { s.activeId = m.id })}>
                 <span className="avatar sm">{m.name[0]?.toUpperCase()}</span>
-                <span className="grow"><b>{m.name}</b><span className="muted small" style={{ display: 'block' }}>{t('age_' + m.age)}{JMAP[m.journeyId] ? ` · ${L(JMAP[m.journeyId].name)}` : ''}</span></span>
+                <span className="grow"><b>{m.name}</b><span className="muted small" style={{ display: 'block' }}>{t('level_' + m.level)}{JMAP[m.journeyId] ? ` · ${L(JMAP[m.journeyId].name)}` : ''}</span></span>
                 {m.id === p.id && <span className="chip ok"><Check size={12} /> {t('active')}</span>}
               </button>
               {m.id === p.id

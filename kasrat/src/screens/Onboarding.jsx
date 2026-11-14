@@ -5,10 +5,9 @@ import { useT, LANGS } from '../lib/i18n.js'
 import { JOURNEYS, JMAP, recommend } from '../data/journeys.js'
 import { APP } from '../config.js'
 
-const AGES = [['kid', '🧒'], ['teen', '🧑'], ['adult', '💁'], ['mid', '🧔'], ['senior', '🧓']]
 const GOALS = [['lose', '🔥'], ['strong', '💪'], ['active', '🏃'], ['flex', '🧘']]
 const LEVELS = [['beginner', '🌱'], ['inter', '🌿'], ['advanced', '🌳']]
-export const LIMITS = ['knee', 'back', 'shoulder', 'floor']
+export const LIMITS = ['knee', 'back', 'shoulder', 'impact', 'floor']
 
 export function JourneyOption({ j, on, onClick, badge }) {
   const { t, L } = useT()
@@ -33,19 +32,19 @@ export default function Onboarding({ add = false, onDone }) {
   const { t } = useT()
   const steps = add ? ['who', 'goal', 'level', 'health', 'body', 'plan'] : ['lang', 'who', 'goal', 'level', 'health', 'body', 'plan']
   const [i, setI] = useState(0)
-  const [d, setD] = useState({ name: '', age: 'adult', goal: 'active', level: 'beginner', days: 3, limits: [], kg: '', cm: '' })
+  const [d, setD] = useState({ name: '', goal: 'active', level: 'beginner', days: 3, limits: [], kg: '', cm: '' })
   const [jid, setJid] = useState(null)
   const set = (patch) => setD((x) => ({ ...x, ...patch }))
   const step = steps[i]
 
   const rec = recommend(d)
-  const others = JOURNEYS.filter((j) => j.id !== rec && j.ages.includes(d.age)).slice(0, 3)
+  const others = JOURNEYS.filter((j) => j.id !== rec).slice(0, 3)
   const chosen = jid && (jid === rec || others.some((j) => j.id === jid)) ? jid : rec
 
   const next = () => {
     if (i < steps.length - 1) return setI(i + 1)
     const p = newProfile({
-      name: d.name.trim(), age: d.age, goal: d.age === 'kid' ? 'active' : d.goal, level: d.level, days: d.days, limits: d.limits,
+      name: d.name.trim(), goal: d.goal, level: d.level, days: d.days, limits: d.limits,
       kg: Number(d.kg) || null, cm: Number(d.cm) || null, journeyId: chosen,
     })
     if (p.kg) p.weights.push({ date: dayStr(), kg: p.kg })
@@ -84,15 +83,6 @@ export default function Onboarding({ add = false, onDone }) {
         <>
           <div><h1>{t('whoTitle')}</h1><p className="muted">{t('whoSub')}</p></div>
           <input className="input" placeholder={t('namePh')} value={d.name} maxLength={24} onChange={(e) => set({ name: e.target.value })} autoComplete="given-name" />
-          <h3>{t('ageTitle')}</h3>
-          <div className="stack">
-            {AGES.map(([id, emoji]) => (
-              <button key={id} className={`opt ${d.age === id ? 'on' : ''}`} onClick={() => set({ age: id })}>
-                <span className="emoji">{emoji}</span><span className="grow"><b>{t('age_' + id)}</b></span>
-              </button>
-            ))}
-          </div>
-          {(d.age === 'kid' || d.age === 'teen') && <p className="note">{t('kidNote')}</p>}
         </>
       )}
 
@@ -121,7 +111,7 @@ export default function Onboarding({ add = false, onDone }) {
               </button>
             ))}
           </div>
-          <h3>{t('daysTitle')}</h3>
+          <div><h3>{t('daysTitle')}</h3><p className="muted small">{t('daysSub')}</p></div>
           <div className="pills">
             {[2, 3, 4, 5, 6].map((n) => <button key={n} className={`pill ${d.days === n ? 'on' : ''}`} onClick={() => set({ days: n })}>{n}</button>)}
           </div>

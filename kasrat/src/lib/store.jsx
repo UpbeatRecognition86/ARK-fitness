@@ -52,7 +52,8 @@ export function maxProfiles(s) {
 }
 // Week 1 of every Plus journey is free to try.
 export function canPlay(s, journey, index) {
-  return !journey.premium || isPlus(s) || index < (journey.perWeek || 0)
+  const days = Math.min(6, Math.max(2, activeProfile(s)?.days || journey.perWeek || 3))
+  return !journey.premium || isPlus(s) || index < days
 }
 
 export function stats(p) {
@@ -99,7 +100,7 @@ export function badges(p) {
     { id: 'w10', emoji: '💪', en: '10 workouts', hi: '10 कसरतें', got: st.workouts >= 10 },
     { id: 'w25', emoji: '🏆', en: '25 workouts', hi: '25 कसरतें', got: st.workouts >= 25 },
     { id: 'm100', emoji: '⏱️', en: '100 minutes', hi: '100 मिनट', got: st.minutes >= 100 },
-    { id: 'm500', emoji: '🚀', en: '500 minutes', hi: '500 मिनट', got: st.minutes >= 500 },
+    { id: 'pb', emoji: '🏔️', en: 'First peak climbed', hi: 'पहली चोटी फ़तह', got: Object.keys(p.pbs || {}).length >= 1 },
     { id: 'j1', emoji: '👑', en: 'Journey complete', hi: 'यात्रा पूरी', got: (p.completed || []).length >= 1 },
   ]
 }
@@ -108,7 +109,7 @@ export function newProfile(data) {
   return {
     id: Math.random().toString(36).slice(2, 10),
     name: '', age: 'adult', goal: 'active', level: 'beginner', limits: [], kg: null, cm: null, days: 3,
-    journeyId: null, progress: {}, completed: [], difficulty: 1, history: [], weights: [], water: {}, points: 0,
+    journeyId: null, progress: {}, completed: [], difficulty: 1, history: [], weights: [], water: {}, pbs: {}, points: 0,
     ...data,
   }
 }

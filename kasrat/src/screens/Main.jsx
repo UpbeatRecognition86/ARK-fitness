@@ -2,9 +2,10 @@ import { useState } from 'react'
 import { ArrowLeft, Play, Lock, Check, Flame, Star, Clock, ChevronRight, Search, Share2, Crown } from 'lucide-react'
 import { useStore, activeProfile, stats, canPlay, isPlus, dayStr, addDays, weekStart, rank } from '../lib/store.jsx'
 import { useT, TIPS } from '../lib/i18n.js'
-import { JOURNEYS, JMAP, QUICK } from '../data/journeys.js'
+import { JOURNEYS, JMAP, QUICK, PEAKS, recommend } from '../data/journeys.js'
 import { EXERCISES } from '../data/exercises.js'
-import { buildSession, totalSessions } from '../lib/plan.js'
+import { buildSession, totalSessions, daysPerWeek } from '../lib/plan.js'
+import { clock } from './Me.jsx'
 import { APP } from '../config.js'
 import Figure from '../components/Figure.jsx'
 
@@ -33,7 +34,8 @@ export function Home({ nav }) {
   const today = dayStr()
   const j = JMAP[p.journeyId]
   const idx = j ? p.progress[j.id] || 0 : 0
-  const finished = j && idx >= totalSessions(j)
+  const finished = j && idx >= totalSessions(j, p)
+  const left = j && !finished ? daysPerWeek(j, p) - (idx % daysPerWeek(j, p)) : 0
   const locked = j && !finished && !canPlay(state, j, idx)
   const session = j && !finished ? buildSession(j, idx, p) : null
   const ws = weekStart()
@@ -59,7 +61,7 @@ export function Home({ nav }) {
           <div>
             <div className="muted small">{finished ? L(j.name) : `${t('today')} · ${L(j.name)}`}</div>
             {session && <h2 style={{ fontSize: '1.4rem' }}>{L(session.title)}</h2>}
-            {session && <div className="muted small">{t('weekDay', { w: session.week, d: session.day })} · {session.minutes} {t('min')} · ~{session.kcal} {t('kcal')}</div>}
+            {session && <div className="muted small">{t('coachWeek', { w: session.week })} · {t('weekLeft', { n: left })} · {session.minutes} {t('min')} · ~{session.kcal} {t('kcal')}</div>}
             {finished && <h2>{t('journeyDone')} 🎉</h2>}
           </div>
           {st.days.has(today) && !finished && <div className="small">✅ {t('doneToday')}</div>}
@@ -109,7 +111,7 @@ function JourneyCard({ j, nav }) {
   const { t, L } = useT()
   const p = activeProfile(state)
   const done = p.progress[j.id] || 0
-  const total = totalSessions(j)
+  const total = totalSessions(j, p)
   return (
     <button className="card tap" onClick={() => nav.go('journey', { jid: j.id })}>
       <div className="jcard">
@@ -119,7 +121,7 @@ function JourneyCard({ j, nav }) {
           <div className="muted small">{L(j.tag)}</div>
           <div className="row wrap" style={{ gap: 6, marginTop: 6 }}>
             {p.journeyId === j.id && <span className="chip">{t('current')}</span>}
-            <span className="chip plain">{t('weeksN', { n: j.weeks })} · {t('perWeekN', { n: j.perWeek })}</span>
+            <span className="chip plain">{t('weeksN', { n: j.weeks })}</span>
             {j.premium ? (isPlus(state) ? null : <span className="chip gold"><Crown size={12} /> {t('week1Free')}</span>) : <span className="chip ok">{t('free')}</span>}
           </div>
         </div>
@@ -134,8 +136,9 @@ export function Journeys({ nav }) {
   const { state } = useStore()
   const { t } = useT()
   const p = activeProfile(state)
-  const mine = JOURNEYS.filter((j) => j.ages.includes(p.age))
-  const rest = JOURNEYS.filter((j) => !j.ages.includes(p.age))
+  const picks = [p.journeyId, recommend(p)]
+  const mine = JOURNEYS.filter((j) => picks.includes(j.id))
+  const rest = JOURNEYS.filter((j) => !picks.includes(j.id))
   return (
     <div className="screen">
       <h1>{t('tab_journeys')}</h1>
@@ -153,7 +156,8 @@ export function JourneyDetail({ jid, nav }) {
   const p = activeProfile(state)
   const j = JMAP[jid]
   const done = p.progress[j.id] || 0
-  const total = totalSessions(j)
+  const perWeek = daysPerWeek(j, p)
+  const total = totalSessions(j, p)
   const isCurrent = p.journeyId === j.id
   const [hint, setHint] = useState(false)
   const open = (n) => {
@@ -167,7 +171,7 @@ export function JourneyDetail({ jid, nav }) {
       <div className="hero" style={{ background: j.color }}>
         <span className="big-emoji">{j.emoji}</span>
         <h1>{L(j.name)}</h1>
-        <div className="muted small">{t('weeksN', { n: j.weeks })} · {t('perWeekN', { n: j.perWeek })} · {t('sessionsDone', { n: Math.min(done, total), t: total })}</div>
+        <div className="muted small">{t('weeksN', { n: j.weeks })} · {t('perWeekN', { n: perWeek })} · {t('sessionsDone', { n: Math.min(done, total), t: total })}</div>
         <p>{L(j.about)}</p>
         {isCurrent ? <div className="small">✅ {t('currentJourney')}</div> : (
           <button className="btn" onClick={() => update((s) => { activeProfile(s).journeyId = j.id })}>{t('startJourney')}</button>
@@ -179,10 +183,10 @@ export function JourneyDetail({ jid, nav }) {
       {hint && <p className="note warn">{t('finishPrev')}</p>}
       {Array.from({ length: j.weeks }, (_, w) => (
         <div className="card" key={w}>
-          <h3 className="muted">{t('week')} {w + 1}</h3>
+          <h3 className="muted">{t('coachWeek', { w: w + 1 })}</h3>
           <div className="list">
-            {Array.from({ length: j.perWeek }, (_, d) => {
-              const n = w * j.perWeek + d
+            {Array.from({ length: perWeek }, (_, d) => {
+              const n = w * perWeek + d
               const s = buildSession(j, n, p)
               const paid = !canPlay(state, j, n)
               const cls = n < done ? 'done' : n === done ? 'next' : ''
@@ -201,6 +205,24 @@ export function JourneyDetail({ jid, nav }) {
   )
 }
 
+function PeakRow({ peak, nav }) {
+  const { state } = useStore()
+  const { t, L } = useT()
+  const p = activeProfile(state)
+  const best = (p.pbs || {})[peak.id]
+  const locked = peak.premium && !isPlus(state)
+  return (
+    <button className="li" onClick={() => (locked ? nav.go('paywall') : nav.go('session', { pid: peak.id }))}>
+      <span className="jbadge" style={{ background: 'var(--brand-soft)', width: 46, height: 46 }}>🏔️</span>
+      <span className="grow">
+        <b>{L(peak.name)}</b> <span className="chip plain">{t('lvl_' + peak.lvl)}</span>
+        <span className="muted small" style={{ display: 'block' }}>{t('roundsN', { n: peak.rounds })} · {best ? `${t('best')} ${clock(best)}` : t('noBest')}</span>
+      </span>
+      {locked ? <span className="chip gold"><Lock size={12} /> {t('plus')}</span> : <ChevronRight size={18} className="muted" />}
+    </button>
+  )
+}
+
 const AREAS = ['cardio', 'legs', 'push', 'back', 'core', 'yoga', 'balance', 'mobility']
 
 export function Explore({ nav }) {
@@ -213,6 +235,8 @@ export function Explore({ nav }) {
   return (
     <div className="screen">
       <h1>{t('tab_explore')}</h1>
+      <div><h2>{t('peaks')}</h2><p className="muted small">{t('peaksSub')}</p></div>
+      <div className="card"><div className="list">{PEAKS.map((x) => <PeakRow key={x.id} peak={x} nav={nav} />)}</div></div>
       <h2>{t('quick')}</h2>
       <div className="tiles">{QUICK.map((x) => <QuickCard key={x.id} q={x} nav={nav} wide />)}</div>
 
@@ -272,10 +296,11 @@ export function Done({ hid, nav }) {
       <h1>{t('shabash')}</h1>
       <p className="muted">{t('workoutDone')} · {L(h.title)}</p>
       <div className="tiles" style={{ gridTemplateColumns: '1fr 1fr 1fr', textAlign: 'left' }}>
-        <div className="tile"><Clock size={18} /><b>{h.minutes}</b><span className="muted small">{t('min')}</span></div>
+        <div className="tile"><Clock size={18} /><b>{h.pid ? clock(h.seconds) : h.minutes}</b><span className="muted small">{h.pid ? t('time') : t('min')}</span></div>
         <div className="tile"><Flame size={18} color="var(--brand)" /><b>{h.kcal}</b><span className="muted small">{t('kcal')}</span></div>
         <div className="tile"><Star size={18} color="var(--gold)" /><b>+{h.points}</b><span className="muted small">{t('points')}</span></div>
       </div>
+      {h.pb && <div className="chip gold" style={{ alignSelf: 'center', fontSize: '0.95rem', padding: '6px 14px' }}>🏆 {t('newPb')}</div>}
       <div className="chip" style={{ alignSelf: 'center' }}><Flame size={13} /> {st.streak} · {t('streak')}</div>
       <div className="card stack">
         <h3>{t('howFelt')}</h3>

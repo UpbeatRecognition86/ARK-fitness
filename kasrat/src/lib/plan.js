@@ -1,8 +1,6 @@
 import { EX } from '../data/exercises.js'
 
 const LEVEL_F = { beginner: 0.75, inter: 1, advanced: 1.3 }
-const AGE_F = { kid: 0.9, teen: 0.9, adult: 1, mid: 0.9, senior: 0.8 }
-const GENTLE_AGES = ['senior']
 
 // Swap a move the person should not do for its easier alternative.
 export function substitute(id, profile) {
@@ -13,7 +11,7 @@ export function substitute(id, profile) {
     const bad =
       e.avoid.some((a) => limits.includes(a)) ||
       (e.floor && limits.includes('floor')) ||
-      (e.impact === 'high' && (limits.includes('knee') || GENTLE_AGES.includes(profile.age)))
+      (e.impact === 'high' && (limits.includes('knee') || limits.includes('impact')))
     if (!bad) return id
     id = e.alt
   }
@@ -32,22 +30,23 @@ export function stepSeconds(s) {
 
 // Build a playable session from a journey/quick template for this person.
 export function buildSession(tpl, index, profile) {
-  const perWeek = tpl.perWeek || 1
+  const perWeek = daysPerWeek(tpl, profile)
   const week = Math.floor(index / perWeek)
   const s = tpl.sessions ? tpl.sessions[index % tpl.sessions.length] : tpl
-  const factor = (LEVEL_F[profile.level] || 1) * (AGE_F[profile.age] || 1) * (1 + (tpl.ramp ?? 0.05) * week) * (profile.difficulty || 1)
+  const factor = tpl.fixed ? 1 : (LEVEL_F[profile.level] || 1) * (1 + (tpl.ramp ?? 0.05) * week) * (profile.difficulty || 1)
   const steps = []
-  const add = (id, section, f, rest, round, rounds) => {
+  const add = (item, section, f, rest, round, rounds) => {
+    const [id, fixedAmount] = Array.isArray(item) ? item : [item]
     const sid = substitute(id, profile)
     if (!sid) return
     const prev = steps[steps.length - 1]
     if (prev && prev.ex === sid && prev.section === section && prev.round === round) return
     const e = EX[sid]
-    steps.push({ ex: sid, type: e.type, amount: amount(e, f), section, rest, round, rounds })
+    steps.push({ ex: sid, type: e.type, amount: fixedAmount && sid === id ? fixedAmount : fixedAmount ? amount(e, fixedAmount / EX[id].base) : amount(e, f), section, rest, round, rounds })
   }
   for (const id of tpl.warm || []) add(id, 'warm', 1, 5)
   const rounds = tpl.rounds || 1
-  for (let r = 1; r <= rounds; r++) for (const id of s.items) add(id, 'main', factor, tpl.rest || 20, r, rounds)
+  for (let r = 1; r <= rounds; r++) for (const id of s.items) add(id, 'main', factor, tpl.rest ?? 20, r, rounds)
   for (const id of tpl.cool || []) add(id, 'cool', 1, 5)
   if (steps.length) steps[steps.length - 1].rest = 0
 
@@ -60,9 +59,14 @@ export function buildSession(tpl, index, profile) {
     kcal += (sec / 60) * EX[st.ex].met * 3.5 * kg / 200
   }
   return {
-    title: s.name, week: week + 1, day: (index % perWeek) + 1, steps,
+    title: s.name, forTime: !!tpl.fixed, week: week + 1, day: (index % perWeek) + 1, steps,
     minutes: Math.max(1, Math.round(seconds / 60)), kcal: Math.round(kcal), kcalPerSec: kcal / Math.max(1, seconds),
   }
 }
 
-export const totalSessions = (j) => j.weeks * j.perWeek
+// The coach plans each week around the number of days the person chose.
+export function daysPerWeek(tpl, profile) {
+  if (!tpl.sessions) return 1
+  return Math.min(6, Math.max(2, profile?.days || tpl.perWeek || 3))
+}
+export const totalSessions = (j, profile) => j.weeks * daysPerWeek(j, profile)
