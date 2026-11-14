@@ -3,7 +3,7 @@ import { writeFileSync } from 'node:fs'
 import { VOICE_LINES } from '../src/data/voice.js'
 
 const section = (title, lang) => `## ${title}\n\n${VOICE_LINES.map((l, i) => `${i + 1}. ${l[lang]}`).join('\n')}\n`
-const md = `# Kasrat voice script
+const md = `# OjasFit voice script
 
 ${VOICE_LINES.length} lines per language. Record **one audio file per language**, reading the lines
 **in this order**.

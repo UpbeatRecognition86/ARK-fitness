@@ -1,4 +1,4 @@
-# Kasrat — fitness for every Indian family
+# OjasFit — your home fitness coach
 
 A guided home-workout app for the Indian mass market: multi-week **journeys**, no equipment,
 Hindi + English, several family members on one phone. It lives in this folder and is independent

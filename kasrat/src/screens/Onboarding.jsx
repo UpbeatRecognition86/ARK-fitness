@@ -69,7 +69,7 @@ export default function Onboarding({ add = false, onDone }) {
         <div className="stack center" style={{ marginTop: '12vh', gap: 16 }}>
           <img src="./icon.svg" alt="" className="logo" style={{ margin: '0 auto' }} />
           <h1>{APP.name}</h1>
-          <p className="muted">Fitness for every Indian family<br />हर भारतीय परिवार की फ़िटनेस</p>
+          <p className="muted">Your home fitness coach<br />घर पर फ़िटनेस, आपके कोच के साथ</p>
           <h2 style={{ marginTop: 16 }}>Choose your language · अपनी भाषा चुनें</h2>
           {LANGS.map((l) => (
             <button key={l.code} className={`opt ${state.lang === l.code ? 'on' : ''}`} onClick={() => update((s) => { s.lang = l.code })}>

@@ -1,4 +1,4 @@
-# Kasrat voice script
+# OjasFit voice script
 
 61 lines per language. Record **one audio file per language**, reading the lines
 **in this order**.

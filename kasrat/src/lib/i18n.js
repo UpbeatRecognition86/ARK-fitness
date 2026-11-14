@@ -7,7 +7,7 @@ export const LANGS = [
 ]
 
 const S = {
-  appTag: ['Fitness for every Indian family', 'हर भारतीय परिवार की फ़िटनेस'],
+  appTag: ['Your home fitness coach', 'घर पर फ़िटनेस, आपके कोच के साथ'],
   chooseLang: ['Choose your language', 'अपनी भाषा चुनें'],
   continue: ['Continue', 'आगे बढ़ें'],
   back: ['Back', 'वापस'],

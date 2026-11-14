@@ -1,5 +1,5 @@
 // Change the brand, prices and payment mode here.
-export const APP = { name: 'Kasrat', storageKey: 'kasrat_v1', url: '' }
+export const APP = { name: 'OjasFit', storageKey: 'kasrat_v1', url: '' }
 
 export const PLANS = [
   { id: 'monthly', price: 99, months: 1, profiles: 3 },

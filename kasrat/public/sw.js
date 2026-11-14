@@ -1,5 +1,5 @@
 // Offline support: network-first for the page, cache-first for hashed assets.
-const CACHE = 'kasrat-v1'
+const CACHE = 'ojasfit-v1'
 self.addEventListener('install', () => self.skipWaiting())
 self.addEventListener('activate', (e) => {
   e.waitUntil(
