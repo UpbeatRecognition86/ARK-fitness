@@ -25,6 +25,10 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build
+      # Kasrat (mass-market app) is built separately and served at /kasrat/
+      - run: npm ci && npm run build
+        working-directory: kasrat
+      - run: cp -r kasrat/dist dist/kasrat
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist
