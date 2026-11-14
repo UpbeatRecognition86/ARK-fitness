@@ -59,7 +59,42 @@ export function speak(text, lang) {
   } catch { /* speech not available */ }
 }
 
+// ---- Recorded voice pack ----
+// public/audio/manifest.json lists the clip ids available per language. When every clip a
+// sentence needs is there, the recording plays; otherwise the phone's own voice is used.
+let manifest = {}
+let current = null
+export async function loadVoicePack() {
+  try {
+    const r = await fetch('./audio/manifest.json', { cache: 'no-cache' })
+    if (r.ok) manifest = await r.json()
+  } catch { /* offline or no pack: fall back to the built-in voice */ }
+}
+export const hasVoicePack = (lang) => Array.isArray(manifest[lang]) && manifest[lang].length > 0
+
+export function sayClips(ids, lang, fallbackText) {
+  stopSpeaking()
+  const have = manifest[lang]
+  if (!have || !ids.every((id) => have.includes(id))) {
+    if (fallbackText) speak(fallbackText, lang)
+    return
+  }
+  const token = { audio: null }
+  current = token
+  const play = (n) => {
+    if (current !== token || n >= ids.length) return
+    const a = new Audio(`./audio/${lang}/${ids[n]}.mp3`)
+    token.audio = a
+    a.onended = () => play(n + 1)
+    a.onerror = () => play(n + 1)
+    a.play().catch(() => {})
+  }
+  play(0)
+}
+
 export function stopSpeaking() {
+  try { current?.audio?.pause() } catch { /* ignore */ }
+  current = null
   try { window.speechSynthesis?.cancel() } catch { /* ignore */ }
 }
 

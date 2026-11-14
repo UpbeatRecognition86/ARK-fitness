@@ -4,7 +4,7 @@ import { useStore, activeProfile } from '../lib/store.jsx'
 import { useT } from '../lib/i18n.js'
 import { EX } from '../data/exercises.js'
 import { buildSession } from '../lib/plan.js'
-import { beep, speak, stopSpeaking, keepAwake, buzz } from '../lib/media.js'
+import { beep, sayClips, stopSpeaking, keepAwake, buzz } from '../lib/media.js'
 import Figure from '../components/Figure.jsx'
 import Sheet from '../components/Sheet.jsx'
 
@@ -135,10 +135,16 @@ function Player({ session, onExit, onFinish }) {
   const timed = phase !== 'work' || step.type === 'time'
   const upcoming = phase === 'ready' ? steps[i] : steps[i + 1]
 
-  const say = (text) => { if (voice) speak(text, lang) }
+  // Each line names the recorded clips to play, with the sentence for the built-in voice as a fallback.
+  const say = (ids, text) => { if (voice) sayClips(ids, lang, text) }
+  const finished = useRef(false)
   const announce = (s) => {
     const amt = s.type === 'reps' ? `${s.amount} ${t('times')}` : s.amount >= 120 ? `${Math.round(s.amount / 60)} ${t('min')}` : `${s.amount} ${t('sec')}`
-    say(`${L(EX[s.ex].name)}. ${amt}.`)
+    const n = steps.indexOf(s)
+    const newRound = s.section === 'main' && s.round > 1 && steps[n - 1]?.round !== s.round
+    const lead = n === steps.length - 1 && steps.length > 1 ? [] : newRound ? [s.round === s.rounds ? 'round_final' : s.round % 2 ? 'round_b' : 'round_a'] : []
+    const tail = n === steps.length - 1 && steps.length > 1 ? ['last_one'] : []
+    say([...lead, 'ex_' + s.ex, ...tail], `${L(EX[s.ex].name)}. ${amt}.`)
   }
   const count = (n) => { setLeft(n); setTotal(n) }
   const startWork = (n) => {
@@ -149,11 +155,16 @@ function Player({ session, onExit, onFinish }) {
   const advance = () => {
     if (phase === 'ready') return startWork(i)
     if (phase === 'work') {
-      if (i >= steps.length - 1) { stopSpeaking(); if (sound) buzz([80, 60, 160]); return onFinish({ seconds: elapsed.current, session }) }
+      if (i >= steps.length - 1) {
+        finished.current = true
+        stopSpeaking(); say(['done'], '')
+        if (sound) buzz([80, 60, 160])
+        return onFinish({ seconds: elapsed.current, session })
+      }
       if (step.rest > 0) {
         setPhase('rest'); count(step.rest); setFlash('')
         if (sound) buzz(30)
-        say(`${t('rest')}. ${t('next')}: ${L(EX[steps[i + 1].ex].name)}`)
+        say(['rest_next', 'ex_' + steps[i + 1].ex], `${t('rest')}. ${t('next')}: ${L(EX[steps[i + 1].ex].name)}`)
         return
       }
       return startWork(i + 1)
@@ -165,8 +176,8 @@ function Player({ session, onExit, onFinish }) {
   useEffect(() => {
     let lock
     keepAwake().then((l) => { lock = l })
-    say(`${t('getReady')}. ${L(EX[steps[0].ex].name)}`)
-    return () => { lock?.release?.(); stopSpeaking() }
+    say(['get_ready', 'ex_' + steps[0].ex], `${t('getReady')}. ${L(EX[steps[0].ex].name)}`)
+    return () => { lock?.release?.(); if (!finished.current) stopSpeaking() }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -185,7 +196,7 @@ function Player({ session, onExit, onFinish }) {
     if (left <= 3) { if (sound) beep(left === 1 ? 1100 : 800, 110) }
     else if (phase === 'work' && total >= 20 && left === Math.floor(total / 2)) {
       const msg = ex.sides ? t('switchSides') : total >= 40 ? t('halfway') : ''
-      if (msg) { setFlash(msg); if (sound) { beep(600, 90); buzz(40) } say(msg); setTimeout(() => setFlash(''), 3500) }
+      if (msg) { setFlash(msg); if (sound) { beep(600, 90); buzz(40) } say([ex.sides ? 'switch_sides' : 'halfway'], msg); setTimeout(() => setFlash(''), 3500) }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [left])
