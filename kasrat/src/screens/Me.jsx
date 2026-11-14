@@ -6,6 +6,7 @@ import { JMAP, QMAP, PMAP } from '../data/journeys.js'
 import { APP, PLANS, PAYMENTS } from '../config.js'
 import { purchase } from '../lib/payments.js'
 import { LIMITS } from './Onboarding.jsx'
+import Glyph from '../components/Glyph.jsx'
 import { weeklyMinutes } from '../lib/coach.js'
 import { PEAKS } from '../data/journeys.js'
 
@@ -82,7 +83,7 @@ export function Progress() {
 
       {bests.length > 0 && (
         <div className="card">
-          <h3>🏔️ {t('yourBests')}</h3>
+          <h3>{t('yourBests')}</h3>
           <div className="list">
             {bests.map((x) => <div className="li" key={x.id}><span className="grow"><b>{L(x.name)}</b> <span className="chip plain">{t('lvl_' + x.lvl)}</span></span><b style={{ fontVariantNumeric: 'tabular-nums' }}>{clock(p.pbs[x.id])}</b></div>)}
           </div>
@@ -112,7 +113,7 @@ export function Progress() {
 
       <div className="card stack">
         <h3>{t('badges')}</h3>
-        <div className="badges">{badges(p).map((b) => <div key={b.id} className={`badge ${b.got ? 'got' : ''}`}><span>{b.emoji}</span>{L(b)}</div>)}</div>
+        <div className="badges">{badges(p).map((b) => <div key={b.id} className={`badge ${b.got ? 'got' : ''}`}><span><Glyph id={b.icon} size={24} /></span>{L(b)}</div>)}</div>
       </div>
 
       <div className="card">
@@ -123,7 +124,7 @@ export function Progress() {
             const src = JMAP[h.jid] || QMAP[h.qid] || PMAP[h.pid]
             return (
               <div className="li" key={h.id}>
-                <span style={{ fontSize: '1.5rem' }}>{src?.emoji || '🏃'}</span>
+                <span className="jbadge sm" style={src?.color ? { background: src.color + '1c', color: src.color } : null}><Glyph id={src?.icon || 'activity'} size={20} /></span>
                 <span className="grow"><b>{L(h.title)}</b><span className="muted small" style={{ display: 'block' }}>{h.date} · {h.pid ? clock(h.seconds) : `${h.minutes} ${t('min')}`} · {h.kcal} {t('kcal')}{h.pb ? ' · 🏆' : ''}</span></span>
                 <span className="chip gold">+{h.points}</span>
               </div>

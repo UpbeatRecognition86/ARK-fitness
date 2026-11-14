@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ArrowLeft, Play, Lock, Check, Flame, Star, Clock, ChevronRight, Search, Share2, Crown, Sparkles, TrendingUp } from 'lucide-react'
+import { ArrowLeft, Play, Lock, Check, Flame, Star, Clock, ChevronRight, Search, Share2, Crown, Sparkles, TrendingUp, Droplet, Lightbulb } from 'lucide-react'
 import { useStore, activeProfile, stats, canPlay, isPlus, dayStr, addDays, weekStart, rank } from '../lib/store.jsx'
 import { useT, TIPS } from '../lib/i18n.js'
 import { JOURNEYS, JMAP, QUICK, PEAKS, recommend } from '../data/journeys.js'
@@ -8,6 +8,7 @@ import { buildSession, totalSessions, daysPerWeek } from '../lib/plan.js'
 import { clock } from './Me.jsx'
 import { APP } from '../config.js'
 import Figure from '../components/Figure.jsx'
+import Glyph from '../components/Glyph.jsx'
 import Confetti from '../components/Confetti.jsx'
 import { ExerciseSheet } from './Session.jsx'
 import { coachMessage, weeklyMinutes } from '../lib/coach.js'
@@ -22,7 +23,7 @@ export function QuickCard({ q, nav, wide }) {
   const locked = q.premium && !isPlus(state)
   return (
     <button className="card tap" style={wide ? null : { width: 168 }} onClick={() => (locked ? nav.go('paywall') : nav.go('session', { qid: q.id }))}>
-      <div className="row between"><span style={{ fontSize: '1.7rem' }}>{q.emoji}</span>{locked && <span className="chip gold"><Lock size={12} /> {t('plus')}</span>}</div>
+      <div className="row between"><span className="jbadge sm"><Glyph id={q.icon} size={20} /></span>{locked && <span className="chip gold"><Lock size={12} /> {t('plus')}</span>}</div>
       <b style={{ display: 'block', margin: '6px 0 2px' }}>{L(q.name)}</b>
       <span className="muted small">{s.minutes} {t('min')} · ~{s.kcal} {t('kcal')}</span>
     </button>
@@ -95,7 +96,7 @@ export function Home({ nav }) {
     <div className="screen">
       <div className="topbar">
         <div className="grow">
-          <div className="muted small">{t('namaste')} 🙏</div>
+          <div className="muted small">{t('namaste')}</div>
           <h1>{p.name}</h1>
         </div>
         <span className="chip"><Star size={12} /> {L(r)}</span>
@@ -109,12 +110,12 @@ export function Home({ nav }) {
 
       {j && (
         <div className="hero" style={{ background: j.color, '--hero-shadow': j.color }}>
-          <span className="big-emoji">{j.emoji}</span>
+          <span className="big-emoji"><Glyph id={j.icon} size={150} /></span>
           <div>
             <div className="eyebrow">{finished ? L(j.name) : `${st.days.has(today) ? t('nextUp') : t('today')} · ${L(j.name)}`}</div>
             {session && <h2>{L(session.title)}</h2>}
             {session && <div className="hero-meta"><span><Clock size={15} /> {session.minutes} {t('min')}</span><span><Flame size={15} /> ~{session.kcal} {t('kcal')}</span><span>{t('coachWeek', { w: session.week })}</span></div>}
-            {finished && <h2>{t('journeyDone')} 🎉</h2>}
+            {finished && <h2>{t('journeyDone')}</h2>}
           </div>
           {session && <div><div className="bar"><i style={{ width: `${Math.max(3, pct)}%` }} /></div><div className="muted small" style={{ marginTop: 5 }}>{t('journeyProgress', { n: pct })}</div></div>}
           {locked && <div className="small">{t('week1Done')}</div>}
@@ -146,7 +147,7 @@ export function Home({ nav }) {
       </div>
 
       <div className="card stack">
-        <div className="row between"><h3>💧 {t('water')}</h3><span className="muted small">{t('glasses', { n: water })}</span></div>
+        <div className="row between"><h3 className="row" style={{ gap: 6 }}><Droplet size={18} color="#3b9eea" /> {t('water')}</h3><span className="muted small">{t('glasses', { n: water })}</span></div>
         <div className="glasses">
           {Array.from({ length: 8 }, (_, n) => <button key={n} className={`glass ${n < water ? 'on' : ''}`} onClick={() => setWater(n + 1)} aria-label={`${n + 1}`} />)}
         </div>
@@ -155,7 +156,7 @@ export function Home({ nav }) {
       <div className="row between"><h2>{t('quick')}</h2><button className="link small" onClick={() => nav.tab('explore')}>{t('seeAll')}</button></div>
       <div className="hscroll">{QUICK.slice(0, 5).map((q) => <QuickCard key={q.id} q={q} nav={nav} />)}</div>
 
-      <div className="note"><b>💡 {t('tip')}</b><br />{L(tip)}</div>
+      <div className="note"><b><Lightbulb size={15} style={{ verticalAlign: '-2px' }} /> {t('tip')}</b><br />{L(tip)}</div>
     </div>
   )
 }
@@ -169,7 +170,7 @@ function JourneyCard({ j, nav }) {
   return (
     <button className="card tap" onClick={() => nav.go('journey', { jid: j.id })}>
       <div className="jcard">
-        <span className="jbadge" style={{ background: j.color + '22' }}>{j.emoji}</span>
+        <span className="jbadge" style={{ background: j.color + '1c', color: j.color }}><Glyph id={j.icon} size={26} /></span>
         <div className="grow">
           <b>{L(j.name)}</b>
           <div className="muted small">{L(j.tag)}</div>
@@ -223,11 +224,11 @@ export function JourneyDetail({ jid, nav }) {
     <div className="screen plain">
       <div className="topbar"><button className="iconbtn" onClick={nav.back} aria-label={t('back')}><ArrowLeft size={20} /></button></div>
       <div className="hero" style={{ background: j.color }}>
-        <span className="big-emoji">{j.emoji}</span>
+        <span className="big-emoji"><Glyph id={j.icon} size={150} /></span>
         <h1>{L(j.name)}</h1>
         <div className="muted small">{t('weeksN', { n: j.weeks })} · {t('perWeekN', { n: perWeek })} · {t('sessionsDone', { n: Math.min(done, total), t: total })}</div>
         <p>{L(j.about)}</p>
-        {isCurrent ? <div className="small">✅ {t('currentJourney')}</div> : (
+        {isCurrent ? <div className="small"><Check size={15} style={{ verticalAlign: '-2px' }} /> {t('currentJourney')}</div> : (
           <button className="btn" onClick={() => update((s) => { activeProfile(s).journeyId = j.id })}>{t('startJourney')}</button>
         )}
       </div>
@@ -267,7 +268,7 @@ function PeakRow({ peak, nav }) {
   const locked = peak.premium && !isPlus(state)
   return (
     <button className="li" onClick={() => (locked ? nav.go('paywall') : nav.go('session', { pid: peak.id }))}>
-      <span className="jbadge" style={{ background: 'var(--brand-soft)', width: 46, height: 46 }}>🏔️</span>
+      <span className="jbadge sm"><Glyph id="mountain" size={20} /></span>
       <span className="grow">
         <b>{L(peak.name)}</b> <span className="chip plain">{t('lvl_' + peak.lvl)}</span>
         <span className="muted small" style={{ display: 'block' }}>{t('roundsN', { n: peak.rounds })} · {best ? `${t('best')} ${clock(best)}` : t('noBest')}</span>
@@ -340,7 +341,7 @@ export function Done({ hid, nav }) {
   return (
     <div className="screen plain center">
       <Confetti />
-      <div className="trophy" style={{ marginTop: '3vh' }}>{h.pb ? '🏆' : h.weekDone ? '🏅' : '🎉'}</div>
+      <div className="trophy" style={{ marginTop: '3vh' }}><Glyph id={h.pb ? 'trophy' : h.weekDone ? 'medal' : 'party'} size={44} /></div>
       <h1>{t('shabash')}</h1>
       <p className="muted">{t('workoutDone')} · {L(h.title)}</p>
       <div className="tiles" style={{ gridTemplateColumns: '1fr 1fr 1fr', textAlign: 'left' }}>
@@ -348,7 +349,7 @@ export function Done({ hid, nav }) {
         <div className="tile"><Flame size={18} color="var(--brand)" /><b>{h.kcal}</b><span className="muted small">{t('kcal')}</span></div>
         <div className="tile"><Star size={18} color="var(--gold)" /><b>+{h.points}</b><span className="muted small">{t('points')}</span></div>
       </div>
-      {h.pb && <div className="chip gold" style={{ alignSelf: 'center', fontSize: '0.95rem', padding: '6px 14px' }}>🏆 {t('newPb')}</div>}
+      {h.pb && <div className="chip gold" style={{ alignSelf: 'center', fontSize: '0.95rem', padding: '6px 14px' }}><Glyph id="trophy" size={15} /> {t('newPb')}</div>}
       <div className="row wrap" style={{ justifyContent: 'center' }}>
         <span className="chip"><Flame size={13} /> {st.streak} · {t('streak')}</span>
         {rankUp && <span className="chip gold"><Star size={13} /> {t('rankUp', { r: L(r) })}</span>}
@@ -362,9 +363,9 @@ export function Done({ hid, nav }) {
       <div className="card stack">
         <h3>{t('howFelt')}</h3>
         <div className="row">
-          {[['easy', '😌'], ['ok', '💪'], ['hard', '🥵']].map(([f, e]) => (
+          {[['easy', 'smile'], ['ok', 'thumb'], ['hard', 'flame']].map(([f, e]) => (
             <button key={f} className={`opt ${h.felt === f ? 'on' : ''}`} style={{ flexDirection: 'column', gap: 4, padding: 10 }} disabled={!!h.felt} onClick={() => feel(f)}>
-              <span className="emoji">{e}</span><span className="small"><b>{t('felt_' + f)}</b></span>
+              <span className="opt-icon"><Glyph id={e} size={20} /></span><span className="small"><b>{t('felt_' + f)}</b></span>
             </button>
           ))}
         </div>
